@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "compact": { "primary": "rate", "secondary": "pair", "icon": "currency", "tooltip": "summary" },
+  "compact": { "primary": "tile", "secondary": "pair", "icon": "none", "tooltip": "summary" },
   "expanded": [
     { "text": "heading" },
     { "text": "basis", "style": "muted" },
@@ -10,6 +10,5 @@
       { "trend": "plot", "text": "detail", "align": "right" },
       { "text": "value", "align": "right" }
     ] }
-  ],
-  "assets": "assets/conditions.json"
+  ]
 }

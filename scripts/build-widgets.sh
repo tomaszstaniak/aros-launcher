@@ -60,5 +60,5 @@ PY
 orphans=$("$ln_tc/$ln_prefix-nm" "$out/bin/$ln_target/CurrencyProvider" | awk '$3 ~ /^__aros_set_/ && $1 ~ /^0+$/ {print $3}')
 [ -z "$orphans" ] || { echo "provider has init/exit set entries outside the lists:" $orphans >&2; exit 1; }
 cp "$src/applet.json" "$src/settings.json" "$src/views.json" "$src/LICENSE" "$out/"
-cp -R "$src/certs" "$src/licenses" "$src/assets" "$out/"
+cp -R "$src/certs" "$src/licenses" "$out/"
 echo "$out"

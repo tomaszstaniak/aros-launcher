@@ -14,8 +14,8 @@
  *   - rows of the section "all": every currency of the bank (label: code,
  *     value: how much of it one euro buys), for a host that converts;
  *   - fields: "date", "base", "own", "heading", "basis", and for the first
- *     row of "top" "pair", "rate" and "summary", for a host that shows one
- *     number. */
+ *     row of "top" "pair", "rate", "tile" ("EUR 4.24") and "summary", for a
+ *     host that shows one number. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -170,6 +170,9 @@ static void answer_rates(const struct ZkJson *j, const struct currency_rates *da
             /* as text, four significant digits: short enough for a dock tile */
             strcpy(reply->fields[f].key, "rate");
             snprintf(reply->fields[f++].text, sizeof reply->fields[0].text, "%.4g", v);
+            /* a text-only tile: the currency and its price */
+            strcpy(reply->fields[f].key, "tile");
+            snprintf(reply->fields[f++].text, sizeof reply->fields[0].text, v >= 1000 ? "%s %.0f" : v >= 100 ? "%s %.1f" : v >= 10 ? "%s %.2f" : v >= 1 ? "%s %.3f" : "%s %.4f", top[i], v);
             strcpy(reply->fields[f].key, "summary");
             snprintf(reply->fields[f++].text, sizeof reply->fields[0].text, "1 %s = %s %s", top[i], shown, own);
         }
@@ -225,7 +228,6 @@ int main(int argc, char **argv)
             reply->status = ZW_READY;
             strcpy(reply->attribution, "European Central Bank");
             strcpy(reply->url, "https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/");
-            strcpy(reply->icon, "currency");
             answer_rates(j, rates, days, reply);
         } else {
             strcpy(reply->message, "The bank's file has no rates in the expected form");
