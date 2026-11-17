@@ -95,12 +95,44 @@ static void pair_fields(const struct ZkJson *j, const char *input, const struct 
     if (a > 0 && b > 0) {
         /* as text, four significant digits: short enough for a dock tile */
         snprintf(reply->fields[n].text, sizeof reply->fields[n].text, "%.4g", b / a);
-        snprintf(reply->fields[n + 1].text, sizeof reply->fields[n + 1].text, "1 %s = %.4f %s, ECB %s", from, b / a, to, rates->date);
+        snprintf(reply->fields[n + 1].text, sizeof reply->fields[n + 1].text, "1 %s = %.4f %s", from, b / a, to);
     } else {
         strcpy(reply->fields[n].text, "--");
         snprintf(reply->fields[n + 1].text, sizeof reply->fields[n + 1].text, "The bank lists no rate for %s", a > 0 ? to : from);
     }
     reply->field_count = n + 2;
+}
+
+/* The rows, all for one unit of the chosen "from" currency: first the
+ * section "main" (a host shows it as a short list), then "all" (shown a
+ * page at a time). A host that knows no sections sees one list. */
+static void rate_rows(const struct ZkJson *j, const struct currency_rates *rates, struct ZkWidgetSnapshot *reply)
+{
+    static const char *const main_codes[] = { "EUR", "USD", "GBP", "CHF", "JPY", "PLN" };
+    char from[4];
+    double a, b;
+    int i, n = 0, shown = 0;
+    code_setting(j, zk_json_get(j, 0, "settings"), "from", "EUR", from);
+    a = rate_of(rates, from);
+    if (a <= 0) { strcpy(from, "EUR"); a = 1; }
+    for (i = 0; i < (int)(sizeof main_codes / sizeof *main_codes) && shown < 5 && n < ZW_ROWS; i++) {
+        if (!strcmp(main_codes[i], from) || (b = rate_of(rates, main_codes[i])) <= 0) continue;
+        snprintf(reply->rows[n].label, sizeof reply->rows[n].label, "%s", main_codes[i]);
+        snprintf(reply->rows[n].value, sizeof reply->rows[n].value, "%.5g", b / a);
+        snprintf(reply->rows[n].detail, sizeof reply->rows[n].detail, "1 %s", from);
+        strcpy(reply->rows[n].section, "main");
+        n++; shown++;
+    }
+    for (i = -1; i < rates->n && n < ZW_ROWS; i++) {
+        const char *code = i < 0 ? "EUR" : rates->code[i];
+        if (!strcmp(code, from)) continue;
+        b = i < 0 ? 1 : rates->rate[i];
+        snprintf(reply->rows[n].label, sizeof reply->rows[n].label, "%s", code);
+        snprintf(reply->rows[n].value, sizeof reply->rows[n].value, "%.6g", b / a);
+        strcpy(reply->rows[n].section, "all");
+        n++;
+    }
+    reply->row_count = n;
 }
 
 int main(int argc, char **argv)
@@ -113,7 +145,7 @@ int main(int argc, char **argv)
     char operation[32], temporary[ZW_PATH], completed[ZW_PATH];
     const char *why = NULL;
     size_t size = 0;
-    int result = 5, g = 0, api = 0, i, a, b, ok;
+    int result = 5, g = 0, api = 0, a, b, ok;
     FILE *f;
 
     if (argc != 2) return 5;
@@ -147,13 +179,13 @@ int main(int argc, char **argv)
             snprintf(reply->fields[0].text, sizeof reply->fields[0].text, "%s", rates->date);
             strcpy(reply->fields[1].key, "base");
             strcpy(reply->fields[1].text, "EUR");
-            reply->field_count = 2;
+            /* second line under the rate on a host's card */
+            strcpy(reply->fields[2].key, "source");
+            snprintf(reply->fields[2].text, sizeof reply->fields[2].text, "Reference rate of %s", rates->date);
+            reply->field_count = 3;
             pair_fields(j, input, rates, reply);
-            for (i = 0; i < rates->n && i < ZW_ROWS; i++) {
-                snprintf(reply->rows[i].label, sizeof reply->rows[i].label, "%s", rates->code[i]);
-                snprintf(reply->rows[i].value, sizeof reply->rows[i].value, "%.6g", rates->rate[i]);
-            }
-            reply->row_count = i;
+            strcpy(reply->icon, "currency");
+            rate_rows(j, rates, reply);
         } else {
             strcpy(reply->message, "The bank's file has no rates in the expected form");
         }

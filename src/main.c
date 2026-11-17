@@ -296,7 +296,8 @@ static int rates_take(const char *text, size_t n, int check_request)
         snprintf(app.rates.date, sizeof app.rates.date, "%s", date);
         for (i = 0; i < snap->row_count && app.rates.n < LN_RATES_MAX; i++) {
             double v = atof(snap->rows[i].value);
-            if (strlen(snap->rows[i].label) != 3 || v <= 0) continue;
+            /* the short "main" section repeats rows of the full list */
+            if (strlen(snap->rows[i].label) != 3 || v <= 0 || !strcmp(snap->rows[i].section, "main")) continue;
             memcpy(app.rates.code[app.rates.n], snap->rows[i].label, 4);
             app.rates.rate[app.rates.n++] = v;
         }

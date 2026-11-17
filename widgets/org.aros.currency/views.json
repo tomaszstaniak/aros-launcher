@@ -1,5 +1,16 @@
 {
   "schema": 1,
-  "compact": { "primary": "rate", "secondary": "pair", "tooltip": "summary" },
-  "expanded": { "component": "rows" }
+  "compact": { "primary": "rate", "secondary": "pair", "icon": "currency", "tooltip": "summary" },
+  "expanded": {
+    "component": "cards",
+    "title": "pair",
+    "value": "rate",
+    "subtitle": "summary",
+    "range": "source",
+    "strip": "all",
+    "stripTitle": "All currencies",
+    "list": "main",
+    "listTitle": "Main currencies"
+  },
+  "assets": "assets/conditions.json"
 }

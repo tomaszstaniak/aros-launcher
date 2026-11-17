@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "conditions": {
+    "currency": {
+      "resource": "currency.svg"
+    }
+  }
+}
