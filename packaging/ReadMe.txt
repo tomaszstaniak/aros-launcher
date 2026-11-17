@@ -50,8 +50,9 @@ Type "settings" and press Return on "Launcher Settings": the folders that
 are searched, dark or light theme, compact rows, frosted glass, start with
 the system. "Rescan Programs" and "Quit Launcher" are found the same way.
 
-It looks for files with a tool icon in the chosen folders and in the
-drawers directly inside them. To begin with these are SYS:Tools,
+It looks for programs in the chosen folders and in the drawers directly
+inside them: files with a tool icon, and scripts with an icon of their own
+(a project icon started through IconX). To begin with these are SYS:Tools,
 SYS:Utilities, SYS:System, SYS:Prefs and SYS:Packages (where apkg
 installs).
 

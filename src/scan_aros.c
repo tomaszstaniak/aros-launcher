@@ -60,6 +60,22 @@ static int is_info(const char *name)
     return name[0] == '.' && (name[1] | 32) == 'i' && (name[2] | 32) == 'n' && (name[3] | 32) == 'f' && (name[4] | 32) == 'o';
 }
 
+/* A script with an icon of its own: a project icon whose default tool is
+ * IconX. Many programs are started this way, the executable itself having
+ * no icon. Other project icons are documents and are left out. */
+static int is_script(const struct DiskObject *icon)
+{
+    const char *tool = (const char *)icon->do_DefaultTool, *part;
+    static const char want[] = "iconx";
+    int i;
+    if (icon->do_Type != WBPROJECT || !tool) return 0;
+    for (part = tool; *tool; tool++)
+        if (*tool == ':' || *tool == '/') part = tool + 1;
+    for (i = 0; i < 5; i++)
+        if ((part[i] | 32) != want[i]) return 0;
+    return part[5] == 0;
+}
+
 static void walk(struct ln_scan *s, const char *dir, int depth)
 {
     struct FileInfoBlock *fib;
@@ -78,7 +94,7 @@ static void walk(struct ln_scan *s, const char *dir, int depth)
                 /* GetDiskObject reads <path>.info: no icon file, no program */
                 struct DiskObject *icon = GetDiskObject((CONST_STRPTR)path);
                 if (icon) {
-                    if (icon->do_Type == WBTOOL) send(s, LN_SCAN_PUT, path, name);
+                    if (icon->do_Type == WBTOOL || is_script(icon)) send(s, LN_SCAN_PUT, path, name);
                     FreeDiskObject(icon);
                 }
             }

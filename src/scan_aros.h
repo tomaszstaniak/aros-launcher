@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The scanner: a process of its own that walks the chosen folders, finds
- * programs (files with a tool icon) and tells the main task by message.
+ * programs (files with a tool icon, and scripts with an IconX project icon) and tells the main task by message.
  * It scans every folder once at start and a folder again when DOS says it
  * changed. It never puts up a requester. */
 #ifndef LN_SCAN_AROS_H
