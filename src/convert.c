@@ -444,13 +444,93 @@ answer:
     return 1;
 }
 
+/* --- currencies ---------------------------------------------------------- */
+
+static const struct ln_rates *rates;
+static char note[48];
+
+void ln_convert_use_rates(const struct ln_rates *r) { rates = r; }
+const char *ln_convert_note(void) { return note; }
+
+/* names people type for a currency, beside its three letters */
+static const struct { const char *code, *names; } money[] = {
+    { "EUR", "euro|euros|\xe2\x82\xac" },
+    { "USD", "$|dollar|dollars|us dollar|us dollars|dolar|dolary|dolarow" },
+    { "GBP", "\xc2\xa3|pound sterling|pounds sterling|funt|funty|funtow" },
+    { "PLN", "zl|z\xc5\x82|zloty|zlote|zlotych|z\xc5\x82oty|z\xc5\x82ote|z\xc5\x82otych" },
+    { "CHF", "franc|francs|frank|franki|frankow" },
+    { "JPY", "yen|\xc2\xa5|jen|jeny|jenow" },
+    { "CZK", "koruna|korona|korony|koron" },
+    { "SEK", "swedish krona" }, { "NOK", "norwegian krone" }, { "DKK", "danish krone" },
+    { "CAD", "canadian dollar|canadian dollars" }, { "AUD", "australian dollar|australian dollars" },
+    { "HUF", "forint|forints" }, { "CNY", "yuan|rmb" }, { "INR", "rupee|rupees" },
+};
+
+/* The rate of a currency named by word (euros per unit inverted: units per
+ * euro), and its code; 0 when the word names none or the rates lack it. */
+static int currency(const char *word, size_t wn, char code[4], double *per_euro)
+{
+    char up[4];
+    size_t i;
+    int k;
+    code[0] = 0;
+    if (wn == 3) {
+        for (i = 0; i < 3; i++) up[i] = (char)(word[i] >= 'a' && word[i] <= 'z' ? word[i] - 32 : word[i]);
+        up[3] = 0;
+        memcpy(code, up, 4);
+    }
+    for (i = 0; i < sizeof money / sizeof money[0]; i++)
+        if (named(money[i].names, word, wn)) memcpy(code, money[i].code, 4);
+    if (!code[0]) return 0;
+    if (!strcmp(code, "EUR")) { *per_euro = 1; return 1; }
+    for (k = 0; rates && k < rates->n; k++)
+        if (!strcmp(rates->code[k], code)) { *per_euro = rates->rate[k]; return 1; }
+    return 0;
+}
+
+static int money_question(const char *t, char *left, size_t lcap, char *right, size_t rcap)
+{
+    const char *p = t, *rest, *sp;
+    char from[4], to[4];
+    double v, rf, rt, out;
+    size_t len;
+    if (!rates || !number(&p, &v) || v < 0) return 0;
+    while (*p == ' ') p++;
+    if (!*p) return 0;
+    /* the source currency: the longest run of words that names one */
+    len = strlen(p);
+    for (;;) {
+        if (currency(p, len, from, &rf)) break;
+        while (len && p[len - 1] != ' ') len--;
+        if (len < 2) return 0;
+        len--;
+    }
+    rest = p + len;
+    while (*rest == ' ') rest++;
+    if (*rest) {
+        sp = strchr(rest, ' ');
+        if (sp && is_word(rest, (size_t)(sp - rest), "to|in|as|into|na|w|do|=|->")) rest = sp + 1;
+        if (!currency(rest, strlen(rest), to, &rt)) return 0;
+    } else if (!currency(strcmp(from, "EUR") ? "eur" : "usd", 3, to, &rt)) {
+        return 0;
+    }
+    out = v / rf * rt;
+    if (v == floor(v)) snprintf(left, lcap, "%.0f %s", v, from);
+    else snprintf(left, lcap, "%.2f %s", v, from);
+    snprintf(right, rcap, "%.2f %s", out, to);
+    snprintf(note, sizeof note, "ECB rates of %s", rates->date);
+    return 1;
+}
+
 int ln_convert(const char *text, size_t n, const struct ln_now *now,
                char *left, size_t lcap, char *right, size_t rcap)
 {
     char t[160];
     if (n >= sizeof t || lcap < 8 || rcap < 8) return 0;
+    note[0] = 0;
     if (!tidy(text, n, t, sizeof t)) return 0;
     if (percent_question(t, left, lcap, right, rcap)) return 1;
     if (now && time_question(t, now, left, lcap, right, rcap)) return 1;
-    return units_question(t, left, lcap, right, rcap);
+    if (units_question(t, left, lcap, right, rcap)) return 1;
+    return money_question(t, left, lcap, right, rcap);
 }

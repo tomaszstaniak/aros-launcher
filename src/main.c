@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include <aros/startup.h>
 #include <clib/alib_protos.h>
@@ -47,6 +48,8 @@
 #include "queryline.h"
 #include "results.h"
 #include "scan_aros.h"
+#include "zk_json.h"
+#include "zk_widget_snapshot.h"
 #include "style.h"
 #include "zk_glass_core.h"
 #include "zk_present.h"
@@ -105,6 +108,13 @@ static struct {
     char apkg[64];          /* apkg's path, "" when there is none */
     int confirm_pkg;        /* a package waiting for a second Return, -1 none */
     int pkgs_stale;         /* an install was started: ask for the list again */
+    /* the currency widget: its drawer, its provider, the request on its way */
+    char widget_root[512], widget_provider[600], rates_request[128], rates_file[272];
+    unsigned long rates_generation;
+    char rates_session[24];
+    double rates_fetched;   /* when the rates in use were fetched, seconds; 0 none */
+    double rates_asked;     /* when they were last asked for */
+    struct ln_rates rates;
 } app;
 
 /* --- small things -------------------------------------------------------- */
@@ -229,6 +239,118 @@ static void load_settings(void)
         ln_index_load_counts(app.index, text, n);
         free(text);
     }
+    loud(was);
+}
+
+/* --- the currency widget -------------------------------------------------- */
+
+#ifndef LN_TARGET
+#define LN_TARGET "unknown"
+#endif
+#define RATES_MAX_AGE (12.0 * 3600)     /* the bank publishes once a working day */
+#define RATES_RETRY (15.0 * 60)
+
+/* Takes rates from a provider's answer. 1 when it was a good one. */
+static int rates_take(const char *text, size_t n, int check_request)
+{
+    struct ZkWidgetSnapshot *snap = calloc(1, sizeof *snap);
+    const char *date;
+    int i, ok = 0;
+    if (!snap) return 0;
+    if (zk_widget_snapshot_parse(text, n, snap) && !strcmp(snap->package, "org.aros.currency") && snap->status == ZW_READY
+        && (!check_request || (snap->generation == app.rates_generation && !strcmp(snap->session, app.rates_session)))
+        && (date = zk_widget_field(snap, "date")) && snap->row_count > 0) {
+        memset(&app.rates, 0, sizeof app.rates);
+        snprintf(app.rates.date, sizeof app.rates.date, "%s", date);
+        for (i = 0; i < snap->row_count && app.rates.n < LN_RATES_MAX; i++) {
+            double v = atof(snap->rows[i].value);
+            if (strlen(snap->rows[i].label) != 3 || v <= 0) continue;
+            memcpy(app.rates.code[app.rates.n], snap->rows[i].label, 4);
+            app.rates.rate[app.rates.n++] = v;
+        }
+        app.rates_fetched = snap->updated;
+        ln_convert_use_rates(&app.rates);
+        ok = app.rates.n > 0;
+    } else if (check_request) {
+        note("rates: no good answer (%s)", snap->message[0] ? snap->message : "not an answer to this request");
+    }
+    free(snap);
+    return ok;
+}
+
+/* Finds the widget beside the program and loads the rates kept from last time. */
+static void rates_init(void)
+{
+    BPTR lock;
+    size_t n;
+    char *text;
+    APTR was = quiet();
+    snprintf(app.rates_file, sizeof app.rates_file, "%s/rates.json", app.dir);
+    snprintf(app.rates_session, sizeof app.rates_session, "s%lx", (unsigned long)time(NULL));
+    if ((lock = Lock((CONST_STRPTR)"PROGDIR:Widgets/org.aros.currency", SHARED_LOCK))) {
+        if (NameFromLock(lock, (STRPTR)app.widget_root, sizeof app.widget_root)) {
+            snprintf(app.widget_provider, sizeof app.widget_provider, "%s", app.widget_root);
+            if (!AddPart((STRPTR)app.widget_provider, (CONST_STRPTR)"bin/" LN_TARGET "/CurrencyProvider", sizeof app.widget_provider))
+                app.widget_provider[0] = 0;
+        }
+        UnLock(lock);
+    }
+    if (app.widget_provider[0] && (lock = Lock((CONST_STRPTR)app.widget_provider, SHARED_LOCK))) UnLock(lock);
+    else app.widget_provider[0] = 0;
+    if ((text = read_file(app.rates_file, &n))) {
+        rates_take(text, n, 0);
+        free(text);
+    }
+    loud(was);
+    note("rates: provider '%s', kept rates of '%s' (%d currencies)", app.widget_provider, app.rates.date, app.rates.n);
+}
+
+/* Asks the provider for today's rates when the ones in use are old. */
+static void rates_refresh(void)
+{
+    char quoted[1100], command[1200];
+    double now_s = (double)time(NULL);
+    FILE *f;
+    if (!app.widget_provider[0] || !app.scan) return;
+    if (app.rates_fetched && now_s - app.rates_fetched < RATES_MAX_AGE) return;
+    if (app.rates_asked && now_s - app.rates_asked < RATES_RETRY) return;
+    if (!zk_json_quote(app.widget_root, quoted, sizeof quoted)) return;
+    app.rates_generation++;
+    snprintf(app.rates_request, sizeof app.rates_request, "T:Launcher-rates-%s-%lu.json", app.rates_session, app.rates_generation);
+    if (!(f = fopen(app.rates_request, "wb"))) return;
+    fprintf(f, "{\"api\":1,\"package\":\"org.aros.currency\",\"packageRoot\":%s,\"instance\":\"launcher\",\"session\":\"%s\","
+               "\"generation\":%lu,\"operation\":\"rates\",\"settings\":{}}\n", quoted, app.rates_session, app.rates_generation);
+    fclose(f);
+    snprintf(command, sizeof command, "\"%s\" \"%s\"", app.widget_provider, app.rates_request);
+    if (ln_scan_run(app.scan, command)) {
+        app.rates_asked = now_s;
+        note("rates: asked (generation %lu)", app.rates_generation);
+    } else {
+        remove(app.rates_request);
+    }
+}
+
+/* The provider has ended: its answer is beside the request. */
+static void rates_answer(void)
+{
+    char done[160];
+    size_t n;
+    char *text;
+    BPTR dir;
+    APTR was = quiet();
+    snprintf(done, sizeof done, "%s.done", app.rates_request);
+    if ((text = read_file(done, &n))) {
+        if (rates_take(text, n, 1)) {
+            if ((dir = CreateDir((CONST_STRPTR)app.dir))) UnLock(dir);
+            write_file(app.rates_file, text, n);
+            note("rates: %d currencies of %s", app.rates.n, app.rates.date);
+        }
+        free(text);
+    } else {
+        note("rates: the provider left no answer");
+    }
+    remove(done);
+    remove(app.rates_request);
     loud(was);
 }
 
@@ -443,11 +565,11 @@ static void answer(void)
         struct ln_now when;
         moment(&when);
         if (ln_convert(q, qn, &when, app.calc_left, sizeof app.calc_left, app.calc, sizeof app.calc)) {
-            row[0].key = 1; row[0].title = app.calc; row[0].subtitle = app.calc_left; row[0].kind = "Result"; row[0].score = 1;
+            row[0].key = 1; row[0].title = app.calc; row[0].subtitle = app.calc_left; row[0].kind = ln_convert_note(); row[0].score = 1;
             total = 1;
         } else if (ln_calc(q, qn, app.calc, sizeof app.calc)) {
             snprintf(app.calc_left, sizeof app.calc_left, "%s", q);
-            row[0].key = 1; row[0].title = app.calc; row[0].subtitle = q; row[0].kind = "Result"; row[0].score = 1;
+            row[0].key = 1; row[0].title = app.calc; row[0].subtitle = q; row[0].kind = ""; row[0].score = 1;
             total = 1;
         }
     }
@@ -639,6 +761,7 @@ static int open_panel(const char *footer)
     app.act = 0;
     app.confirm_pkg = -1;
     if (app.pkgs_stale) { app.pkgs_stale = 0; ln_scan_packages(app.scan); }
+    rates_refresh();
     if (!(scr = pick_screen())) { note("open failed: no screen"); return 0; }
 
     compose = zk_present_can_compose(scr);
@@ -1042,6 +1165,10 @@ static void scan_events(void)
             app.index_changed = 1;
             note("scanned '%s' programs=%d", m->path, ln_index_count(app.index));
             break;
+        case LN_SCAN_RAN:
+            rates_answer();
+            app.index_changed = 1;
+            break;
         case LN_SCAN_PACKAGES: {
             size_t n;
             char *text = read_file(LN_PACKAGES_FILE, &n);
@@ -1196,6 +1323,8 @@ int main(int argc, char **argv)
         note("first start: autostart=%d", app.cfg.autostart);
     }
     app.scan = ln_scan_start(app.scanport, app.cfg.folder, app.cfg.folders);
+    rates_init();
+    rates_refresh();
     note("ready folders=%d scanner=%d", app.cfg.folders, app.scan != NULL);
     if ((popup[0] | 32) == 'y') open_panel(NULL);
 

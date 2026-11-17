@@ -8,7 +8,7 @@
 
 #include <exec/ports.h>
 
-enum { LN_SCAN_BEGIN = 1, LN_SCAN_PUT, LN_SCAN_END, LN_SCAN_EXIT, LN_SCAN_PACKAGES };
+enum { LN_SCAN_BEGIN = 1, LN_SCAN_PUT, LN_SCAN_END, LN_SCAN_EXIT, LN_SCAN_PACKAGES, LN_SCAN_RAN };
 
 /* Where the scanner leaves apkg's list of packages for the main task. */
 #define LN_PACKAGES_FILE "T:Launcher-packages.json"
@@ -33,6 +33,10 @@ struct ln_scan *ln_scan_start(struct MsgPort *to, char *const *folders, int n);
 void ln_scan_again(struct ln_scan *s);
 /* Asks for apkg's list of packages again. */
 void ln_scan_packages(struct ln_scan *s);
+/* Runs a command line in the background (a widget's provider); when it
+ * has ended a RAN message comes, with the command in path. One at a time:
+ * 0 when one is still running or the line is too long. */
+int ln_scan_run(struct ln_scan *s, const char *command);
 /* Ends the scanner and waits until it is gone; messages still arriving at
  * the port are freed. */
 void ln_scan_stop(struct ln_scan *s);

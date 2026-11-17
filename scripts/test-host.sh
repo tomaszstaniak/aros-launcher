@@ -20,6 +20,8 @@ FT=$(pkg-config --cflags --libs freetype2)
 export LN_TEST_FONT=${LN_TEST_FONT:-$ZK/tests/fixtures/fonts/OpenSans-Regular.ttf}
 # Pure sources: everything in src/ that is not an AROS module or the program's main.
 pure=$(ls "$R"/src/*.c 2>/dev/null | grep -v -e '_aros\.c$' -e '/main\.c$' || true)
+# and the pure parts of the widgets, with what they share from zunekit
+pure="$pure $R/widgets/org.aros.currency/provider/rates.c $ZK/src/zk_json.c $ZK/src/zk_widget_snapshot.c"
 for t in "$R"/tests/host/test_*.c; do
   n=$(basename "$t" .c)
   # shellcheck disable=SC2086

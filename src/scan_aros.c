@@ -23,6 +23,8 @@ struct ln_scan {
     char **folder;              /* AllocVec'd copies */
     struct NotifyRequest *notify;
     UBYTE *dirty;
+    char command[1200];         /* set by the main task before it signals CTRL_D */
+    volatile LONG busy;         /* a command is waiting or running */
 };
 
 static ULONG len(const char *s) { ULONG n = 0; while (s[n]) n++; return n; }
@@ -156,13 +158,18 @@ static void entry(void)
     if (!stopping()) packages(s);
 
     while (running) {
-        ULONG got = Wait(portsig | SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_E | SIGBREAKF_CTRL_F);
+        ULONG got = Wait(portsig | SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D | SIGBREAKF_CTRL_E | SIGBREAKF_CTRL_F);
         struct NotifyMessage *nm;
         int any = 0;
         if (got & SIGBREAKF_CTRL_C) break;
         if (got & SIGBREAKF_CTRL_F)
             for (i = 0; i < s->n; i++) s->dirty[i] = any = 1;
         if (got & (SIGBREAKF_CTRL_E | SIGBREAKF_CTRL_F)) packages(s);
+        if ((got & SIGBREAKF_CTRL_D) && s->busy) {
+            SystemTags((CONST_STRPTR)s->command, SYS_Input, (IPTR)NULL, SYS_Output, (IPTR)NULL, TAG_DONE);
+            send(s, LN_SCAN_RAN, s->command, NULL);
+            s->busy = 0;
+        }
         if (port) {
             /* a copy into a folder sends many notes: wait for them to stop */
             do {
@@ -237,6 +244,16 @@ void ln_scan_again(struct ln_scan *s)
 void ln_scan_packages(struct ln_scan *s)
 {
     if (s && s->proc) Signal(&s->proc->pr_Task, SIGBREAKF_CTRL_E);
+}
+
+int ln_scan_run(struct ln_scan *s, const char *command)
+{
+    ULONG n = len(command) + 1;
+    if (!s || !s->proc || s->busy || n > sizeof s->command) return 0;
+    CopyMem((APTR)command, s->command, n);
+    s->busy = 1;
+    Signal(&s->proc->pr_Task, SIGBREAKF_CTRL_D);
+    return 1;
 }
 
 void ln_scan_stop(struct ln_scan *s)

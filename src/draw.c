@@ -279,6 +279,12 @@ static void calc_card(struct cv *c, const struct ln_layout *l, const struct ln_s
     else text(c, big, left, ln, x0 + (mid - gap / 2 - x0 - lw) / 2, y, h, dim, x0, mid - gap / 2, NULL, 0, 0);
     if (rw > x1 - 12 - (mid + gap)) fitted(c, big, right, mid + gap, y, h, x1 - 12, col, NULL, 0);
     else text(c, big, right, rn, mid + gap / 2 + (x1 - mid - gap / 2 - rw) / 2, y, h, col, mid + gap / 2, x1, NULL, 0, 0);
+    /* a note under the answer (where the rates are from), when the row has one */
+    if (w->kind && *w->kind && h >= 90) {
+        long nw = zt_measure(f->small, w->kind, strlen(w->kind), 0);
+        text(c, f->small, w->kind, strlen(w->kind), mid + gap / 2 + (x1 - mid - gap / 2 - nw) / 2, y + h - 26, 20, dim,
+             mid + gap / 2, x1, NULL, 0, 0);
+    }
 }
 
 static void result_row(struct cv *c, const struct ln_layout *l, const struct ln_style *s, const struct ln_view *v,

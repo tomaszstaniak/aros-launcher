@@ -109,6 +109,30 @@ int main(void)
     assert(!ln_convert("12pm in london", 14, NULL, l, sizeof l, r, sizeof r));
     assert(ln_convert("10 km", 5, NULL, l, sizeof l, r, sizeof r));
 
+    /* currencies: none without rates; with them, through the euro */
+    assert(none("100 usd to pln"));
+    {
+        static struct ln_rates rates = { "2026-11-16", 4, { "USD", "PLN", "GBP", "JPY" }, { 1.25, 4.0, 0.8, 160.0 } };
+        ln_convert_use_rates(&rates);
+        assert(is("100 usd to pln", "100 USD", "320.00 PLN"));
+        assert(!strcmp(ln_convert_note(), "ECB rates of 2026-11-16"));
+        assert(is("100 eur", "100 EUR", "125.00 USD"));
+        assert(is("100 usd", "100 USD", "80.00 EUR"));
+        assert(is("50 euro in pln", "50 EUR", "200.00 PLN"));
+        assert(is("20 funtow na zlote", "20 GBP", "100.00 PLN"));
+        assert(is("12,50 z\xc5\x82 to eur", "12.50 PLN", "3.12 EUR"));
+        assert(is("1000 yen to usd", "1000 JPY", "7.81 USD"));
+        assert(is("3 us dollars to gbp", "3 USD", "1.92 GBP"));
+        assert(none("100 xyz to pln"));
+        assert(none("100 usd to xyz"));
+        assert(none("-5 usd"));
+        /* units and the calculator's words still win where they apply */
+        assert(is("10 km to mi", "10 km", "6.21371 mi"));
+        assert(!strcmp(ln_convert_note(), ""));
+        ln_convert_use_rates(NULL);
+        assert(none("100 usd to pln"));
+    }
+
     /* not questions */
     assert(none(""));
     assert(none("clock"));

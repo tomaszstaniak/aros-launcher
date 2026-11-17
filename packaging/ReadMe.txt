@@ -51,8 +51,15 @@ It also answers questions in words:
   15% of 200      200 + 15%     20% off 80
   12pm in london  15:30 warsaw to new york   now in tokyo   tokyo time
 
-Times use the time zone set in the system's locale settings. Currencies
-are not there.
+Times use the time zone set in the system's locale settings.
+
+Currencies:   100 usd to pln     50 eur     20 gbp in chf
+
+Rates are the European Central Bank's daily reference rates. The Currency
+widget in the Widgets drawer fetches them over HTTPS at most twice a day
+(the network has to be running) and keeps the last ones for when there is
+no network; the date of the rates is shown under the answer. Nothing about
+you or your query is sent: only that public file is asked for.
 
 
 Open windows
@@ -97,7 +104,7 @@ The hotkey is the CX_POPKEY ToolType of the Launcher icon.
 
 Not there yet
 
-- Currency conversion.
+- Tell us what you miss.
 
 
 What to look at, please
@@ -113,6 +120,14 @@ What to look at, please
 
 Please say which system you ran it on (distribution or nightly date, and
 the graphics driver).
+
+
+Licences
+
+The Currency provider contains curl and OpenSSL (and, on some systems,
+Brotli, zlib and Zstandard); their licence texts are in
+Widgets/org.aros.currency/licenses. The certificate store in certs is
+Mozilla's (MPL 2.0).
 
 
 Requirements

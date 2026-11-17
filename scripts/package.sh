@@ -24,6 +24,10 @@ work=$ln_build/package
 rm -rf "$work"
 mkdir -p "$work/Launcher" "$R/dist"
 cp "$bin" "$work/Launcher/Launcher"
+# the bundled widgets (scripts/build-widgets.sh), beside the program
+[ -x "$ln_build/Widgets/org.aros.currency/bin/$ln_target/CurrencyProvider" ] || { echo "Run scripts/build-widgets.sh first" >&2; exit 1; }
+mkdir -p "$work/Launcher/Widgets"
+cp -R "$ln_build/Widgets/org.aros.currency" "$work/Launcher/Widgets/"
 cp "$R/packaging/Launcher.info" "$work/Launcher/Launcher.info"
 cp "$R/packaging/drawer.info" "$work/Launcher.info"
 sed -e "s/@LABEL@/$label/" -e "s/@TARGET@/$arch/" -e "s|@REQUIRES@|$requires|" "$R/packaging/ReadMe.txt" > "$work/Launcher/ReadMe.txt"
