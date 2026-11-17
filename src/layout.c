@@ -65,3 +65,23 @@ int ln_layout_row_at(const struct ln_layout *l, const struct ln_style *s, int x,
         if (y >= l->row_y[i] && y < l->row_y[i] + s->row_h) return l->row_index[i];
     return -1;
 }
+
+static int max_ph(const struct ln_style *s)
+{
+    return s->query_h + 1 + s->inset + s->heading_h + LN_ROWS_MAX * s->row_h + s->inset + 1 + s->footer_h;
+}
+
+void ln_layout_max(const struct ln_style *s, int shadow, int *w, int *h)
+{
+    *w = s->width + 2 * shadow;
+    *h = max_ph(s) + 2 * shadow;
+}
+
+void ln_layout_pin(struct ln_layout *l, const struct ln_style *s)
+{
+    int ph = max_ph(s);
+    if (l->ph >= ph) return;
+    l->footer_y += ph - l->ph;
+    l->ph = ph;
+    l->h = ph + 2 * l->py;
+}

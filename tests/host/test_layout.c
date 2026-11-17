@@ -75,6 +75,22 @@ int main(void)
     /* a heading only when the first shown row starts the list or a new source */
     assert(l.headings == 1);
 
+    /* the largest picture holds every layout; pinning stretches a short one */
+    {
+        int mw, mh, fy;
+        ln_layout_max(full, 24, &mw, &mh);
+        assert(mw == l.w + 48 && mh >= l.h + 48);
+        q = ln_results_query(r);
+        fill(r, q, 2);
+        ln_layout_make(&l, full, r, 0, 24);
+        assert(l.h < mh && l.w == mw);
+        fy = l.footer_y;
+        ln_layout_pin(&l, full);
+        assert(l.h == mh && l.footer_y > fy && l.footer_y + 1 + full->footer_h == l.py + l.ph);
+        fill(r, q, 20);
+        ln_layout_make(&l, full, r, 0, 24);
+        assert(l.h == mh);
+    }
     ln_results_free(r);
     return 0;
 }

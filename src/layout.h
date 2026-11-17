@@ -29,6 +29,12 @@ struct ln_layout {
  * the room kept around the panel for its shadow, 0 for none. */
 void ln_layout_make(struct ln_layout *l, const struct ln_style *s, const struct ln_results *r,
                     int first, int shadow);
+/* The size of the largest picture this look can need (LN_ROWS_MAX rows):
+ * a window of this size holds every layout. */
+void ln_layout_max(const struct ln_style *s, int shadow, int *w, int *h);
+/* Stretches the panel to its largest height, the footer at the bottom,
+ * for a window whose outline cannot change while it is open. */
+void ln_layout_pin(struct ln_layout *l, const struct ln_style *s);
 /* The result under a point of the picture, -1 when there is none. */
 int ln_layout_row_at(const struct ln_layout *l, const struct ln_style *s, int x, int y);
 /* Whether a point of the picture is on the panel (not its shadow or corners). */
