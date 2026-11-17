@@ -23,7 +23,8 @@ struct ln_view {
     void *icon_ctx;
 };
 
-struct ln_fonts { zt_font *query, *title, *small; };
+/* big may be NULL: the query's font is then used for the calculator's card. */
+struct ln_fonts { zt_font *query, *title, *small, *big; };
 
 /* The name of a source's section ("Results", "Calculator"). */
 const char *ln_source_name(int source);

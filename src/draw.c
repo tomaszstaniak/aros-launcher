@@ -247,6 +247,39 @@ static void query_line(struct cv *c, const struct ln_layout *l, const struct ln_
     if (v->caret_on) fill(c, (int)(x0 - shift + caret_x), ty, 2, asc + desc, s->text);
 }
 
+/* The calculator's result as a card: what was typed on the left, an arrow,
+ * the value on the right, both large. */
+static void calc_card(struct cv *c, const struct ln_layout *l, const struct ln_style *s, const struct ln_fonts *f,
+                      const struct ln_row *w, int y, int h, int selected)
+{
+    zt_font *big = f->big ? f->big : f->query;
+    int x0 = l->px + s->inset, x1 = l->px + l->pw - s->inset, mid = (x0 + x1) / 2, gap = 28;
+    const char *left = w->subtitle ? w->subtitle : "", *right = w->title ? w->title : "";
+    unsigned long col = selected ? s->sel_text : s->text, dim = selected ? s->sel_dim : s->dim;
+    long lw, rw;
+    size_t ln = strlen(left), rn = strlen(right);
+    fill_round(c, x0, y, x1 - x0, h, s->sel_radius + 3, selected ? s->sel_fill : (s->rule & 0xfffffful) | 0x12000000ul);
+    /* the divider, open in the middle for the arrow */
+    fill(c, mid, y + 8, 1, h / 2 - 8 - 14, s->rule);
+    fill(c, mid, y + h / 2 + 14, 1, h / 2 - 8 - 14, s->rule);
+    /* the arrow is drawn, not typed: not every font has one */
+    {
+        int cy = y + h / 2, k;
+        fill(c, mid - 8, cy - 1, 17, 2, dim);
+        for (k = 0; k < 6; k++) {
+            fill(c, mid + 8 - k, cy - 1 - k, 2, 2, dim);
+            fill(c, mid + 8 - k, cy - 1 + k, 2, 2, dim);
+        }
+    }
+    /* each side centred in its half; too long a text starts at the half's edge and is cut */
+    lw = zt_measure(big, left, ln, 0);
+    rw = zt_measure(big, right, rn, 0);
+    if (lw > mid - gap - (x0 + 12)) fitted(c, big, left, x0 + 12, y, h, mid - gap, dim, NULL, 0);
+    else text(c, big, left, ln, x0 + (mid - gap / 2 - x0 - lw) / 2, y, h, dim, x0, mid - gap / 2, NULL, 0, 0);
+    if (rw > x1 - 12 - (mid + gap)) fitted(c, big, right, mid + gap, y, h, x1 - 12, col, NULL, 0);
+    else text(c, big, right, rn, mid + gap / 2 + (x1 - mid - gap / 2 - rw) / 2, y, h, col, mid + gap / 2, x1, NULL, 0, 0);
+}
+
 static void result_row(struct cv *c, const struct ln_layout *l, const struct ln_style *s, const struct ln_view *v,
                        const struct ln_fonts *f, const struct ln_row *w, int y, int selected)
 {
@@ -326,7 +359,8 @@ int ln_draw_cached(unsigned char *argb, const struct ln_layout *l, const struct 
     }
     for (i = 0; i < l->shown; i++) {
         const struct ln_row *w = ln_results_row(v->results, l->row_index[i]);
-        result_row(&c, l, s, v, f, w, l->row_y[i], l->row_index[i] == sel);
+        if (w->source == LN_SRC_CALC) calc_card(&c, l, s, f, w, l->row_y[i], l->row_h[i], l->row_index[i] == sel);
+        else result_row(&c, l, s, v, f, w, l->row_y[i], l->row_index[i] == sel);
     }
     if (l->empty_y >= 0) {
         const char *none = v->qn ? "No results" : "No programs yet";

@@ -52,7 +52,9 @@ int main(void)
     int n0, n1, x_title, i;
 
     assert(font);
+    memset(&f, 0, sizeof f);
     f.query = zt_font_open(&font, 1, s->font_query);
+    f.big = zt_font_open(&font, 1, s->font_big);
     f.title = zt_font_open(&font, 1, s->font_title);
     f.small = zt_font_open(&font, 1, s->font_small);
     assert(f.query && f.title && f.small);
@@ -181,7 +183,7 @@ int main(void)
     draw(ln_style_get(0, 1), &v, &f, 0, 0);
 
     free(pic); free(back);
-    zt_font_close(f.query); zt_font_close(f.title); zt_font_close(f.small);
+    zt_font_close(f.query); zt_font_close(f.title); zt_font_close(f.small); zt_font_close(f.big);
     ln_results_free(r);
     return 0;
 }

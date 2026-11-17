@@ -43,7 +43,9 @@ int main(void)
     assert(font);
     for (look = 0; look < 4; look++) {
         const struct ln_style *s = ln_style_get(look & 1, look >> 1);
-        f.query = zt_font_open(&font, 1, s->font_query);
+        memset(&f, 0, sizeof f);
+    f.query = zt_font_open(&font, 1, s->font_query);
+    f.big = zt_font_open(&font, 1, s->font_big);
         f.title = zt_font_open(&font, 1, s->font_title);
         f.small = zt_font_open(&font, 1, s->font_small);
         assert(f.query && f.title && f.small);
@@ -95,7 +97,7 @@ int main(void)
         assert(ln_results_answer(r, q, LN_SRC_PACKAGES, w, 1));
         assert(ln_results_selected(r) == 0 && ln_results_row(r, 0)->source == LN_SRC_PROGRAMS);
 
-        zt_font_close(f.query); zt_font_close(f.title); zt_font_close(f.small);
+        zt_font_close(f.query); zt_font_close(f.title); zt_font_close(f.small); zt_font_close(f.big);
     }
     ln_results_free(r);
     return 0;

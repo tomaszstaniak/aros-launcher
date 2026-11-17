@@ -104,6 +104,8 @@ static void blur(unsigned char *argb, int w, int h, int rad)
     free(t);
 }
 
+static int calc_mode;
+
 static void one(const char *dir, const char *name, const char *font, int dark, int compact, int glass)
 {
     const struct ln_style *s = ln_style_get(dark, compact);
@@ -121,7 +123,9 @@ static void one(const char *dir, const char *name, const char *font, int dark, i
     static const char *subs[5] = { "SYS:Apps/WordCraft", "SYS:Utilities", "Work:Tools/Wordbook", "Work:Games/Fargoal", "Work:Games" };
     static const unsigned short at[5] = { 0, 4, 0, 1, 5 };
 
+    memset(&f, 0, sizeof f);
     f.query = zt_font_open(&font, 1, s->font_query);
+    f.big = zt_font_open(&font, 1, s->font_big);
     f.title = zt_font_open(&font, 1, s->font_title);
     f.small = zt_font_open(&font, 1, s->font_small);
     if (!f.query || !f.title || !f.small) { fprintf(stderr, "cannot open %s\n", font); exit(1); }
@@ -130,6 +134,13 @@ static void one(const char *dir, const char *name, const char *font, int dark, i
         w[i].key = (unsigned)i + 1; w[i].title = titles[i]; w[i].subtitle = subs[i]; w[i].kind = "Program"; w[i].score = 100 - i;
         w[i].m.n = 4; w[i].m.pos[0] = at[i]; w[i].m.pos[1] = (unsigned short)(at[i] + 1); w[i].m.pos[2] = (unsigned short)(at[i] + 2); w[i].m.pos[3] = (unsigned short)(at[i] + 3);
     }
+    if (calc_mode) {
+        struct ln_row cr;
+        memset(&cr, 0, sizeof cr);
+        cr.key = 1; cr.title = "13.3333333333"; cr.subtitle = "(2+3)*4/1.5"; cr.kind = "Result"; cr.score = 1;
+        ln_results_answer(r, q, LN_SRC_CALC, &cr, 1);
+        ln_results_answer(r, q, LN_SRC_PROGRAMS, w, 2);
+    } else
     ln_results_answer(r, q, LN_SRC_PROGRAMS, w, 5);
     memset(&v, 0, sizeof v);
     v.results = r; v.query = "word"; v.qn = 4; v.caret = 4; v.caret_on = 1;
@@ -163,7 +174,7 @@ static void one(const char *dir, const char *name, const char *font, int dark, i
     png(path, rgb, W, H);
     printf("%s\n", path);
     free(rgb); free(pic); free(back);
-    zt_font_close(f.query); zt_font_close(f.title); zt_font_close(f.small);
+    zt_font_close(f.query); zt_font_close(f.title); zt_font_close(f.small); zt_font_close(f.big);
     ln_results_free(r);
 }
 
@@ -174,5 +185,9 @@ int main(int argc, char **argv)
     one(argv[2], "light", argv[1], 0, 0, 1);
     one(argv[2], "compact", argv[1], 1, 1, 1);
     one(argv[2], "plain", argv[1], 1, 0, 0);
+    calc_mode = 1;
+    one(argv[2], "calc", argv[1], 1, 0, 1);
+    one(argv[2], "calc-light", argv[1], 0, 0, 1);
+    one(argv[2], "calc-compact", argv[1], 1, 1, 1);
     return 0;
 }

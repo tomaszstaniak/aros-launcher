@@ -44,6 +44,30 @@ to the clipboard.
   sqrt(2)   sin(pi/2)   ln(e)   log(100)   abs(-3)   round(2.5)
 
 
+Open windows
+
+Windows that are open are found by their title, beside programs; Return
+brings the window to the front.
+
+
+Shell commands
+
+Start the line with ">" to run it as a Shell command in a console of its
+own:   > list sys:
+
+
+Packages
+
+If apkg is installed (C:apkg or the arospkg package), packages of its
+catalogue that are not installed yet are found by name. Return asks once,
+a second Return installs the package in a console window.
+
+
+System
+
+"Restart Computer" and "Shut Down Computer" ask for a second Return.
+
+
 Settings
 
 Type "settings" and press Return on "Launcher Settings": the folders that
@@ -61,7 +85,6 @@ The hotkey is the CX_POPKEY ToolType of the Launcher icon.
 
 Not there yet
 
-- Open windows, system commands and packages as results.
 - The Tab key (actions for a result) does nothing.
 
 

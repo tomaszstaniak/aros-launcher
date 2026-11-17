@@ -10,13 +10,13 @@
 
 static const struct ln_style styles[4] = {
     /* dark, full */
-    { 620, 14, 50, 46, 24, 34, 6, 7, 16, 32, 1, 19, 14, 12, DARK_COLOURS },
+    { 620, 14, 50, 46, 108, 24, 34, 6, 7, 16, 32, 1, 19, 14, 12, 30, DARK_COLOURS },
     /* dark, compact */
-    { 560, 10, 40, 28, 0, 28, 6, 5, 14, 20, 0, 16, 13, 11, DARK_COLOURS },
+    { 560, 10, 40, 28, 64, 0, 28, 6, 5, 14, 20, 0, 16, 13, 11, 22, DARK_COLOURS },
     /* light, full */
-    { 620, 14, 50, 46, 24, 34, 6, 7, 16, 32, 1, 19, 14, 12, LIGHT_COLOURS },
+    { 620, 14, 50, 46, 108, 24, 34, 6, 7, 16, 32, 1, 19, 14, 12, 30, LIGHT_COLOURS },
     /* light, compact */
-    { 560, 10, 40, 28, 0, 28, 6, 5, 14, 20, 0, 16, 13, 11, LIGHT_COLOURS },
+    { 560, 10, 40, 28, 64, 0, 28, 6, 5, 14, 20, 0, 16, 13, 11, 22, LIGHT_COLOURS },
 };
 
 const struct ln_style *ln_style_get(int dark, int compact)

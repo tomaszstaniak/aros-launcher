@@ -18,6 +18,7 @@ struct ln_layout {
     int shown;                  /* results shown */
     int row_y[LN_ROWS_MAX];     /* top of each shown result */
     int row_index[LN_ROWS_MAX]; /* which result it is */
+    int row_h[LN_ROWS_MAX];     /* its height: the calculator's result is a tall card */
     int headings;               /* section headings shown */
     int heading_y[LN_ROWS_MAX];
     int heading_source[LN_ROWS_MAX];

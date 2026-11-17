@@ -30,7 +30,8 @@ void ln_layout_make(struct ln_layout *l, const struct ln_style *s, const struct 
         for (i = first; i < n && l->shown < LN_ROWS_MAX; i++) {
             const struct ln_row *w = ln_results_row(r, i);
             int heading = s->heading_h && w->source != last_source;
-            if (used + (heading ? s->heading_h : 0) + s->row_h > list_room(s)) break;
+            int rh = w->source == LN_SRC_CALC ? s->card_h : s->row_h;
+            if (used + (heading ? s->heading_h : 0) + rh > list_room(s)) break;
             if (heading) {
                 l->heading_y[l->headings] = y;
                 l->heading_source[l->headings] = w->source;
@@ -41,9 +42,10 @@ void ln_layout_make(struct ln_layout *l, const struct ln_style *s, const struct 
             last_source = w->source;
             l->row_y[l->shown] = y;
             l->row_index[l->shown] = i;
+            l->row_h[l->shown] = rh;
             l->shown++;
-            y += s->row_h;
-            used += s->row_h;
+            y += rh;
+            used += rh;
         }
         /* scroll on until the selection is on show */
         if (sel < 0 || !l->shown || sel <= l->row_index[l->shown - 1]) break;
@@ -75,7 +77,7 @@ int ln_layout_row_at(const struct ln_layout *l, const struct ln_style *s, int x,
     int i;
     if (x < l->px + s->inset || x >= l->px + l->pw - s->inset) return -1;
     for (i = 0; i < l->shown; i++)
-        if (y >= l->row_y[i] && y < l->row_y[i] + s->row_h) return l->row_index[i];
+        if (y >= l->row_y[i] && y < l->row_y[i] + l->row_h[i]) return l->row_index[i];
     return -1;
 }
 

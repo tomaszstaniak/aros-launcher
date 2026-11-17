@@ -436,6 +436,7 @@ static void close_fonts(struct panel *p)
     if (p->f.query) zt_font_close(p->f.query);
     if (p->f.title) zt_font_close(p->f.title);
     if (p->f.small) zt_font_close(p->f.small);
+    if (p->f.big) zt_font_close(p->f.big);
     memset(&p->f, 0, sizeof p->f);
     p->fonts_open = 0;
 }
@@ -447,6 +448,7 @@ static int open_fonts(struct panel *p)
     p->f.query = zt_open_for(NULL, p->style->font_query, NULL, 0, NULL);
     p->f.title = zt_open_for(NULL, p->style->font_title, NULL, 0, NULL);
     p->f.small = zt_open_for(NULL, p->style->font_small, NULL, 0, NULL);
+    p->f.big = zt_open_for(NULL, p->style->font_big, NULL, 0, NULL);        /* may fail: the card then uses the query's font */
     if (!p->f.query || !p->f.title || !p->f.small) { close_fonts(p); return 0; }
     p->font_dark = app.cfg.dark; p->font_compact = app.cfg.compact; p->fonts_open = 1;
     return 1;
