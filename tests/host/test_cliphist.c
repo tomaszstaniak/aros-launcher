@@ -1,0 +1,56 @@
+#include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "../../src/cliphist.h"
+
+int main(void)
+{
+    struct ln_cliphist h;
+    char line[32], big[16];
+    unsigned first;
+    int i;
+    memset(&h, 0, sizeof h);
+    assert(!ln_cliphist_add(&h, "", 0, 1) && !ln_cliphist_add(&h, "  \n\t", 4, 1) && h.n == 0);
+    assert(ln_cliphist_add(&h, "one", 3, 1) && ln_cliphist_add(&h, "two", 3, 2) && h.n == 2);
+    assert(!strcmp(h.v[0].text, "two") && h.v[0].id != h.v[1].id && h.v[0].id && h.v[1].id);
+    first = h.v[1].id;
+    /* the newest again changes nothing but its time; an older one moves up and keeps its id */
+    assert(!ln_cliphist_add(&h, "two", 3, 3) && h.v[0].when == 3);
+    assert(ln_cliphist_add(&h, "one", 3, 4) && h.n == 2 && !strcmp(h.v[0].text, "one") && h.v[0].id == first && h.v[0].when == 4);
+    assert(ln_cliphist_find(&h, first) == &h.v[0] && !ln_cliphist_find(&h, 9999));
+    ln_cliphist_remove(&h, first);
+    assert(h.n == 1 && !strcmp(h.v[0].text, "two"));
+    ln_cliphist_remove(&h, first);
+    assert(h.n == 1);
+
+    assert(ln_cliphist_add(&h, "\n  first\tline  here\nsecond", 26, 5));
+    ln_cliphist_title(&h.v[0], line, sizeof line);
+    assert(!strcmp(line, "first line here"));
+    ln_cliphist_title(&h.v[0], big, 8);
+    assert(!strcmp(big, "first l"));
+    /* a cut never splits a UTF-8 character: z, a with ogonek (2 bytes), ... */
+    assert(ln_cliphist_add(&h, "zz\xc4\x85\xc4\x85", 6, 6));
+    ln_cliphist_title(&h.v[0], big, 4);
+    assert(!strcmp(big, "zz"));
+    ln_cliphist_title(&h.v[0], big, 5);
+    assert(!strcmp(big, "zz\xc4\x85"));
+
+    ln_cliphist_clear(&h);
+    assert(h.n == 0);
+    for (i = 0; i < LN_CLIP_MAX + 5; i++) {
+        char t[16];
+        snprintf(t, sizeof t, "text %d", i);
+        assert(ln_cliphist_add(&h, t, strlen(t), (unsigned)i));
+    }
+    assert(h.n == LN_CLIP_MAX && !strcmp(h.v[0].text, "text 54") && !strcmp(h.v[LN_CLIP_MAX - 1].text, "text 5"));
+    {
+        char *huge = malloc(LN_CLIP_TEXT_MAX + 1);
+        assert(huge);
+        memset(huge, 'x', LN_CLIP_TEXT_MAX + 1);
+        assert(!ln_cliphist_add(&h, huge, LN_CLIP_TEXT_MAX + 1, 9) && ln_cliphist_add(&h, huge, LN_CLIP_TEXT_MAX, 9));
+        free(huge);
+    }
+    ln_cliphist_clear(&h);
+    return 0;
+}

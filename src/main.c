@@ -41,6 +41,8 @@
 #include "calc.h"
 #include "config.h"
 #include "shortcuts.h"
+#include "cliphist.h"
+#include "clipwatch_aros.h"
 #include "dockbar/widgets.h"
 #include "convert.h"
 #include "draw.h"
@@ -61,7 +63,7 @@
 #include "zk_present.h"
 #include "zk_text_aros.h"
 
-static const char version[] __attribute__((used)) = "$VER: Launcher 0.4 (18.11.2026)";
+static const char version[] __attribute__((used)) = "$VER: Launcher 0.5 (18.11.2026)";
 
 #define EVT_HOTKEY 1
 #define EVT_SHORTCUT 100      /* and the next LN_SHORTCUTS_MAX: the hotkeys of results */
@@ -136,6 +138,9 @@ static struct {
     int prompt;             /* asking for an alias (LN_ALIAS) or a hotkey (LN_HOTKEY); 0 not */
     char prompt_target[600], prompt_title[200];
     int listing;            /* showing the list of aliases and hotkeys */
+    /* what was on the clipboard, newest first; in memory only */
+    struct ln_cliphist clips;
+    ULONG clipsig;          /* the signal of a change, 0 when not watched */
     /* ARexx: the launcher's own port, and the port answers to what it sent come to */
     struct MsgPort *rexxport, *rexxreply;
     int rexx_out;           /* commands sent and not answered yet */
@@ -743,7 +748,7 @@ static void moment(struct ln_now *n)
 }
 
 /* The actions of a result, for Tab. The first is what Return does. */
-enum { A_DEFAULT = 1, A_SHOW_DRAWER, A_COPY_PATH, A_SHELL_HERE, A_SHOW_SCREEN, A_COPY_BOTH, A_COPY_TEXT, A_SET_ALIAS, A_SET_HOTKEY };
+enum { A_DEFAULT = 1, A_SHOW_DRAWER, A_COPY_PATH, A_SHELL_HERE, A_SHOW_SCREEN, A_COPY_BOTH, A_COPY_TEXT, A_SET_ALIAS, A_SET_HOTKEY, A_CLIP_DELETE, A_CLIP_CLEAR };
 struct action { unsigned id; const char *title, *subtitle; };
 static const struct action program_actions[] = {
     { A_DEFAULT, "Open", "Start the program" },
@@ -782,6 +787,12 @@ static const struct action file_actions[] = {
     { A_SHELL_HERE, "Open Shell Here", "A Shell in its drawer" },
     { 0, NULL, NULL }
 };
+static const struct action clip_actions[] = {
+    { A_DEFAULT, "Copy", "Put it back on the clipboard" },
+    { A_CLIP_DELETE, "Delete Entry", "Forget this text" },
+    { A_CLIP_CLEAR, "Delete All Entries", "Forget everything the history holds" },
+    { 0, NULL, NULL }
+};
 static const struct action package_actions[] = {
     { A_DEFAULT, "Install", "Install the package" },
     { A_COPY_TEXT, "Copy Name", "Put the package's name on the clipboard" },
@@ -789,7 +800,7 @@ static const struct action package_actions[] = {
 };
 
 /* What the launcher itself can do, found by name like programs. */
-enum { CMD_SETTINGS = 1, CMD_RESCAN, CMD_QUIT, CMD_RESTART, CMD_SHUTDOWN, CMD_DOCKBAR, CMD_ABOUT, CMD_SHORTCUTS };
+enum { CMD_SETTINGS = 1, CMD_RESCAN, CMD_QUIT, CMD_RESTART, CMD_SHUTDOWN, CMD_DOCKBAR, CMD_ABOUT, CMD_SHORTCUTS, CMD_CLIPBOARD };
 #define CMD_KEY 0xffff0000u         /* row keys of commands; program ids are far below */
 #define WIN_KEY 0xfffe0000u         /* row keys of open windows */
 static const struct { unsigned id; const char *title, *subtitle; } commands[] = {
@@ -800,6 +811,7 @@ static const struct { unsigned id; const char *title, *subtitle; } commands[] = 
     { CMD_RESTART, "Restart Computer", "Asks once more before it restarts" },
     { CMD_SHUTDOWN, "Shut Down Computer", "Asks once more before it switches off" },
     { CMD_SHORTCUTS, "Aliases and Hotkeys", "See, change or remove them" },
+    { CMD_CLIPBOARD, "Clipboard History", "Texts that were on the clipboard; also: clip" },
 };
 
 /* Dockbar 0.6.0 and later take widget packages through a public port. */
@@ -943,6 +955,7 @@ static const struct action *actions_of(int source, unsigned key)
     case LN_SRC_CALC: return calc_actions;
     case LN_SRC_PACKAGES: return package_actions;
     case LN_SRC_FILES: return file_actions;
+    case LN_SRC_CLIP: return clip_actions;
     case LN_SRC_PROGRAMS: return key >= CMD_KEY ? command_actions : key >= WIN_KEY ? window_actions : program_actions;
     default: return NULL;
     }
@@ -1131,6 +1144,7 @@ static void answer(void)
         ln_results_answer(p->res, cur, LN_SRC_PACKAGES, row, 0);
         ln_results_answer(p->res, cur, LN_SRC_FILES, row, 0);
         ln_results_answer(p->res, cur, LN_SRC_REXX, row, 0);
+        ln_results_answer(p->res, cur, LN_SRC_CLIP, row, 0);
         if (app.prompt) {
             /* one row: what Return would do with what is typed */
             char key[80];
@@ -1171,6 +1185,7 @@ static void answer(void)
         ln_results_answer(p->res, cur, LN_SRC_PACKAGES, row, 0);
         ln_results_answer(p->res, cur, LN_SRC_FILES, row, 0);
         ln_results_answer(p->res, cur, LN_SRC_REXX, row, 0);
+        ln_results_answer(p->res, cur, LN_SRC_CLIP, row, 0);
         for (i = 0; a && a[i].id; i++) {
             if (!ln_match(q, qn, a[i].title, strlen(a[i].title), &row[total].m)) continue;
             row[total].key = a[i].id;
@@ -1183,6 +1198,37 @@ static void answer(void)
         return;
     }
     ln_results_answer(p->res, cur, LN_SRC_ACTIONS, row, 0);
+
+    /* "clip" and what follows it: the clipboard's history, narrowed */
+    {
+        const char *rest = NULL;
+        if (qn >= 4 && !strncmp(q, "clip", 4) && (qn == 4 || q[4] == ' ')) rest = q + (qn == 4 ? 4 : 5);
+        if (rest) {
+            static char titles[LN_CLIP_MAX][120], subs[LN_CLIP_MAX][40];
+            size_t rn = strlen(rest);
+            ln_results_answer(p->res, cur, LN_SRC_SHELL, row, 0);
+            ln_results_answer(p->res, cur, LN_SRC_CALC, row, 0);
+            ln_results_answer(p->res, cur, LN_SRC_PROGRAMS, row, 0);
+            ln_results_answer(p->res, cur, LN_SRC_PACKAGES, row, 0);
+            ln_results_answer(p->res, cur, LN_SRC_FILES, row, 0);
+            ln_results_answer(p->res, cur, LN_SRC_REXX, row, 0);
+            for (i = 0; i < app.clips.n && total < QUERY_ROWS; i++) {
+                const struct ln_clip *cl = &app.clips.v[i];
+                ln_cliphist_title(cl, titles[i], sizeof titles[i]);
+                if (!ln_match(rest, rn, titles[i], strlen(titles[i]), &row[total].m)) continue;
+                snprintf(subs[i], sizeof subs[i], cl->n == 1 ? "%lu character" : "%lu characters", (unsigned long)cl->n);
+                row[total].key = cl->id;
+                row[total].title = titles[i];
+                row[total].subtitle = subs[i];
+                row[total].kind = i ? "" : "Newest";
+                row[total].score = (rn ? row[total].m.score : 0) + LN_CLIP_MAX - i;
+                total++;
+            }
+            ln_results_answer(p->res, cur, LN_SRC_CLIP, row, total);
+            return;
+        }
+        ln_results_answer(p->res, cur, LN_SRC_CLIP, row, 0);
+    }
 
     /* "rx PORT command": the ports to choose from, then the command to send */
     {
@@ -1229,6 +1275,7 @@ static void answer(void)
             return;
         }
         ln_results_answer(p->res, cur, LN_SRC_REXX, row, 0);
+        ln_results_answer(p->res, cur, LN_SRC_CLIP, row, 0);
     }
 
     /* "> command": only the Shell's row */
@@ -1782,6 +1829,14 @@ static void run_selected(void)
             if (act_target(target, sizeof target)) prompt_begin(id == A_SET_ALIAS ? LN_ALIAS : LN_HOTKEY, target, app.act_title);
             return;
         }
+        if (id == A_CLIP_DELETE || id == A_CLIP_CLEAR) {
+            if (id == A_CLIP_CLEAR) ln_cliphist_clear(&app.clips);
+            else ln_cliphist_remove(&app.clips, app.act_key);
+            note("clipboard history: %s, %d left", id == A_CLIP_CLEAR ? "cleared" : "one deleted", app.clips.n);
+            actions_leave();
+            show(p);
+            return;
+        }
         if (id == A_DEFAULT) {
             actions_leave();
             run_selected();             /* the result itself, as Return on it */
@@ -1836,6 +1891,14 @@ static void run_selected(void)
         note("rexx sent to '%s': '%s'", port, cmd);
         answer();
         show(p);
+        return;
+    }
+    if (row->source == LN_SRC_CLIP) {
+        const struct ln_clip *cl = ln_cliphist_find(&app.clips, row->key);
+        if (!cl) return;
+        ok = ln_clip_write(cl->text, cl->n);
+        note("clipboard entry of %lu characters copied=%d", (unsigned long)cl->n, ok);
+        close_panel("copied");
         return;
     }
     if (row->source == LN_SRC_FILES) {
@@ -1912,6 +1975,12 @@ static void run_selected(void)
             ok = dockbar_install(said, sizeof said);
             note("dockbar install ok=%d: %s", ok, said);
             if (!ok) open_panel(said);
+            return;
+        }
+        if (id == CMD_CLIPBOARD) {
+            ze_set_text(p->doc, "clip ", 5);
+            query_changed();
+            show(p);
             return;
         }
         if (id == CMD_SHORTCUTS) {
@@ -2291,6 +2360,18 @@ int main(int argc, char **argv)
         loud(was);
     }
     hotkeys_register();
+    {
+        /* the clipboard's history starts with what is on it now */
+        BYTE bit = AllocSignal(-1);
+        size_t n;
+        char *text;
+        if (bit >= 0) {
+            if (ln_clipwatch_start(FindTask(NULL), 1UL << bit)) app.clipsig = 1UL << bit;
+            else FreeSignal(bit);
+        }
+        if ((text = ln_clip_read(&n))) { ln_cliphist_add(&app.clips, text, n, now()); free(text); }
+        note("clipboard watched=%d", app.clipsig != 0);
+    }
 
     /* Started from its icon for the first time, with its settings in the
        usual place: from now on it starts with the system. The switch is in
@@ -2323,7 +2404,7 @@ int main(int argc, char **argv)
     while (running) {
         ULONG winsig = app.p.win ? 1UL << app.p.win->UserPort->mp_SigBit : 0;
         ULONG rexxsig = (app.rexxport ? 1UL << app.rexxport->mp_SigBit : 0) | 1UL << app.rexxreply->mp_SigBit;
-        ULONG mask = 1UL << app.cxport->mp_SigBit | 1UL << app.scanport->mp_SigBit | winsig | rexxsig | SIGBREAKF_CTRL_C, got;
+        ULONG mask = 1UL << app.cxport->mp_SigBit | 1UL << app.scanport->mp_SigBit | winsig | rexxsig | app.clipsig | SIGBREAKF_CTRL_C, got;
         /* icons are read while nothing else asks for attention */
         if (app.p.win && ln_icons_wanted(app.icons)) {
             APTR was = quiet();
@@ -2337,6 +2418,15 @@ int main(int argc, char **argv)
             got = Wait(mask);
         }
         if (got & SIGBREAKF_CTRL_C) running = 0;
+        if (app.clipsig && (got & app.clipsig)) {
+            /* the clipboard changed: its text joins the history */
+            size_t n;
+            char *text = ln_clip_read(&n);
+            if (text) {
+                if (ln_cliphist_add(&app.clips, text, n, now()) && app.p.win) { answer(); show(&app.p); }
+                free(text);
+            }
+        }
         panel_events();
         scan_events();
         if (app.rexxport && !rexx_commands()) running = 0;
@@ -2368,6 +2458,8 @@ out:
     if (app.index) ln_index_free(app.index);
     ln_config_free(&app.cfg);
     ln_shortcuts_free(&app.shortcuts);
+    ln_clipwatch_stop();
+    ln_cliphist_clear(&app.clips);
     if (text) zt_layer_close();
     note("end");
     ArgArrayDone();

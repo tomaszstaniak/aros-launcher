@@ -129,6 +129,18 @@ then the command:
 Return sends it; the answer appears under the row.
 
 
+Clipboard history
+
+  clip            the texts that were on the clipboard, newest first
+  clip invoice    only those with these letters
+
+Return puts the chosen text back on the clipboard; paste it where you
+need it. Tab offers "Delete Entry" and "Delete All Entries". The history
+holds the last 50 texts, each up to 64 KB, from the moment the launcher
+started. It is kept in memory only: nothing is written to a disk, and it
+is gone when the launcher quits or the computer restarts.
+
+
 Aliases and hotkeys
 
 Select a program or one of the launcher's commands, press Tab and choose

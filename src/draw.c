@@ -155,6 +155,7 @@ const char *ln_source_name(int source)
     case LN_SRC_ACTIONS: return "Actions";
     case LN_SRC_FILES: return "Files";
     case LN_SRC_REXX: return "ARexx";
+    case LN_SRC_CLIP: return "Clipboard";
     default: return "";
     }
 }
@@ -383,6 +384,7 @@ int ln_draw_cached(unsigned char *argb, const struct ln_layout *l, const struct 
                : srow->source == LN_SRC_ACTIONS ? "Return  Run     Esc  Back"
                : srow->source == LN_SRC_CALC ? "Tab  Actions     Return  Copy     Esc  Close"
                : srow->source == LN_SRC_SHELL ? "Tab  Actions     Return  Run     Esc  Close"
+               : srow->source == LN_SRC_CLIP ? "Tab  Actions     Return  Copy     Esc  Close"
                : srow->source == LN_SRC_REXX ? "Return  Send     Esc  Close"
                : srow->source == LN_SRC_PACKAGES ? "Tab  Actions     Return  Install     Esc  Close"
                : "Tab  Actions     Return  Open     Esc  Close",
