@@ -1,0 +1,67 @@
+/* SPDX-License-Identifier: MIT */
+#include "layout.h"
+
+void ln_layout_make(struct ln_layout *l, const struct ln_style *s, const struct ln_results *r,
+                    int first, int shadow)
+{
+    int n = ln_results_count(r), sel = ln_results_selected(r), y, i, last_source = -1;
+
+    if (first > n - LN_ROWS_MAX) first = n - LN_ROWS_MAX;
+    if (first < 0) first = 0;
+    if (sel >= 0) {
+        if (sel < first) first = sel;
+        if (sel >= first + LN_ROWS_MAX) first = sel - LN_ROWS_MAX + 1;
+    }
+    l->px = shadow;
+    l->py = shadow;
+    l->pw = s->width;
+    l->query_y = l->py;
+    l->list_y = l->py + s->query_h + 1;     /* a rule under the query line */
+    l->first = first;
+    l->shown = 0;
+    l->headings = 0;
+    l->empty_y = -1;
+    y = l->list_y + s->inset;
+    for (i = first; i < n && l->shown < LN_ROWS_MAX; i++) {
+        const struct ln_row *w = ln_results_row(r, i);
+        if (s->heading_h && w->source != last_source) {
+            l->heading_y[l->headings] = y;
+            l->heading_source[l->headings] = w->source;
+            l->headings++;
+            y += s->heading_h;
+        }
+        last_source = w->source;
+        l->row_y[l->shown] = y;
+        l->row_index[l->shown] = i;
+        l->shown++;
+        y += s->row_h;
+    }
+    if (!n) {
+        l->empty_y = y;
+        y += s->row_h;
+    }
+    y += s->inset;
+    l->footer_y = y;
+    l->ph = y + 1 + s->footer_h - l->py;
+    l->w = l->pw + 2 * shadow;
+    l->h = l->ph + 2 * shadow;
+}
+
+int ln_layout_inside(const struct ln_layout *l, const struct ln_style *s, int x, int y)
+{
+    int rx, ry, r = s->radius;
+    x -= l->px; y -= l->py;
+    if (x < 0 || y < 0 || x >= l->pw || y >= l->ph) return 0;
+    rx = x < r ? r - x : x >= l->pw - r ? x - (l->pw - r - 1) : 0;
+    ry = y < r ? r - y : y >= l->ph - r ? y - (l->ph - r - 1) : 0;
+    return rx * rx + ry * ry <= r * r;
+}
+
+int ln_layout_row_at(const struct ln_layout *l, const struct ln_style *s, int x, int y)
+{
+    int i;
+    if (x < l->px + s->inset || x >= l->px + l->pw - s->inset) return -1;
+    for (i = 0; i < l->shown; i++)
+        if (y >= l->row_y[i] && y < l->row_y[i] + s->row_h) return l->row_index[i];
+    return -1;
+}

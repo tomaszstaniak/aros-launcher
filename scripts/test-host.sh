@@ -16,6 +16,8 @@ if [ ! -f "$HB_O" ] || [ "$ZK/third_party/harfbuzz/src/harfbuzz.cc" -nt "$HB_O" 
 fi
 F="-std=gnu99 -Wall -Wextra -Werror -g -fsanitize=address,undefined -I$R/src -I$ZK/src -I$ZK/third_party/utf8proc -I$ZK/third_party/harfbuzz/src -DUTF8PROC_STATIC"
 FT=$(pkg-config --cflags --libs freetype2)
+# A font for the drawing tests: one of zunekit's fixtures.
+export LN_TEST_FONT=${LN_TEST_FONT:-$ZK/tests/fixtures/fonts/OpenSans-Regular.ttf}
 # Pure sources: everything in src/ that is not an AROS module or the program's main.
 pure=$(ls "$R"/src/*.c 2>/dev/null | grep -v -e '_aros\.c$' -e '/main\.c$' || true)
 for t in "$R"/tests/host/test_*.c; do
@@ -25,3 +27,8 @@ for t in "$R"/tests/host/test_*.c; do
   (cd "$R/tests" && "$B/$n")
   echo "ok $n"
 done
+# Pictures of the panel to look at: build/host/looks/*.png
+mkdir -p "$B/looks"
+# shellcheck disable=SC2086
+$CC $F -o "$B/render_panel" "$R/tests/host/render_panel.c" $pure "$ZK/src/zk_edit_core.c" "$ZK/src/zk_text.c" "$ZK/third_party/utf8proc/utf8proc.c" "$HB_O" $FT ${CXXLIB:--lc++} -lm
+"$B/render_panel" "$LN_TEST_FONT" "$B/looks"
