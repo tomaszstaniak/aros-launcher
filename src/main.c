@@ -31,6 +31,7 @@
 
 #include "config.h"
 #include "draw.h"
+#include "icons_aros.h"
 #include "index.h"
 #include "keys_aros.h"
 #include "layout.h"
@@ -72,6 +73,7 @@ static struct {
     struct ln_config cfg;
     struct ln_index *index;
     struct ln_scan *scan;
+    struct ln_icons *icons;
     struct MsgPort *cxport, *scanport;
     CxObj *broker;
     BPTR log;
@@ -224,6 +226,21 @@ static void answer(void)
     for (i = 0; i < n; i++) zt_free(sub[i]);
 }
 
+/* --- icons --------------------------------------------------------------- */
+
+static const unsigned char *row_icon(void *ctx, const struct ln_row *row, int size)
+{
+    (void)ctx;
+    return row->source == LN_SRC_PROGRAMS ? ln_icons_get(app.icons, row->key, size) : NULL;
+}
+
+static const char *icon_path(void *ctx, unsigned id)
+{
+    const struct ln_entry *e = ln_index_find(app.index, id);
+    (void)ctx;
+    return e ? e->path : NULL;
+}
+
 /* --- the panel ----------------------------------------------------------- */
 
 static void close_fonts(struct panel *p)
@@ -261,6 +278,7 @@ static void paint(struct panel *p)
     v.results = p->res;
     v.footer = p->footer[0] ? p->footer : NULL;
     v.backdrop = p->glass;
+    v.icon = row_icon;
     ln_layout_make(&p->l, p->style, p->res, p->first, p->shadow);
     p->first = p->l.first;
     if (p->pinned) ln_layout_pin(&p->l, p->style);
@@ -578,7 +596,7 @@ int main(int argc, char **argv)
     note("start key='%s' settings='%s'", key, app.dir);
     if (zt_layer_open() != ZT_OK) { PutStr((CONST_STRPTR)"Launcher: the text layer could not start\n"); goto out; }
     text = 1;
-    if (!(app.index = ln_index_new())) goto out;
+    if (!(app.index = ln_index_new()) || !(app.icons = ln_icons_new())) goto out;
     if (!(app.cxport = CreateMsgPort()) || !(app.scanport = CreateMsgPort())) goto out;
     load_settings();
 
@@ -614,7 +632,19 @@ int main(int argc, char **argv)
 
     while (running) {
         ULONG winsig = app.p.win ? 1UL << app.p.win->UserPort->mp_SigBit : 0;
-        ULONG got = Wait(1UL << app.cxport->mp_SigBit | 1UL << app.scanport->mp_SigBit | winsig | SIGBREAKF_CTRL_C);
+        ULONG mask = 1UL << app.cxport->mp_SigBit | 1UL << app.scanport->mp_SigBit | winsig | SIGBREAKF_CTRL_C, got;
+        /* icons are read while nothing else asks for attention */
+        if (app.p.win && ln_icons_wanted(app.icons)) {
+            APTR was = quiet();
+            int read = 0;
+            while (!(SetSignal(0, 0) & mask) && ln_icons_work(app.icons, icon_path, NULL)) read++;
+            loud(was);
+            if (read) show(&app.p);
+            if (!(SetSignal(0, 0) & mask) && !ln_icons_wanted(app.icons)) got = Wait(mask);
+            else got = SetSignal(0, mask) & mask;
+        } else {
+            got = Wait(mask);
+        }
         if (got & SIGBREAKF_CTRL_C) running = 0;
         panel_events();
         scan_events();
@@ -638,6 +668,7 @@ out:
     close_fonts(&app.p);
     if (app.p.doc) ze_free(app.p.doc);
     if (app.p.res) ln_results_free(app.p.res);
+    if (app.icons) ln_icons_free(app.icons);
     if (app.index) ln_index_free(app.index);
     ln_config_free(&app.cfg);
     if (text) zt_layer_close();

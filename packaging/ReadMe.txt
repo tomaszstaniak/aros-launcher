@@ -57,7 +57,6 @@ The hotkey is the CX_POPKEY ToolType of the Launcher icon.
 
 Not there yet
 
-- Program icons: each result shows a coloured square with a letter.
 - A settings window: settings are the text file above.
 - Open windows, calculator, system commands and packages as results.
 - The Tab key (actions for a result) does nothing.
