@@ -62,6 +62,7 @@ int ln_config_defaults(struct ln_config *c)
     memset(c, 0, sizeof *c);
     c->dark = 1;
     c->glass = 1;
+    c->autostart = -1;
     for (i = 0; i < sizeof first / sizeof first[0]; i++)
         if (!ln_config_add_folder(c, first[i])) { ln_config_free(c); return 0; }
     return 1;
@@ -84,6 +85,7 @@ int ln_config_parse(struct ln_config *c, const char *text, size_t n)
     size_t at = 0;
     c->dark = 1;
     c->glass = 1;
+    c->autostart = -1;
     while (at < n) {
         size_t end = at, len, klen;
         const char *line = text + at, *eq;
@@ -107,6 +109,8 @@ int ln_config_parse(struct ln_config *c, const char *text, size_t n)
             c->compact = eq[1] == '1';
         } else if (eq && klen == 5 && !memcmp(line, "glass", 5) && len == 7 && (eq[1] == '0' || eq[1] == '1')) {
             c->glass = eq[1] == '1';
+        } else if (eq && klen == 9 && !memcmp(line, "autostart", 9) && len == 11 && (eq[1] == '0' || eq[1] == '1')) {
+            c->autostart = eq[1] == '1';
         } else if (!keep(c, line, len)) {
             return 0;
         }
@@ -116,7 +120,7 @@ int ln_config_parse(struct ln_config *c, const char *text, size_t n)
 
 char *ln_config_text(const struct ln_config *c, size_t *n)
 {
-    size_t cap = 96 + (c->other ? strlen(c->other) : 0), len = 0;
+    size_t cap = 128 + (c->other ? strlen(c->other) : 0), len = 0;
     char *out;
     int i;
     for (i = 0; i < c->folders; i++) cap += strlen(c->folder[i]) + 9;
@@ -124,6 +128,7 @@ char *ln_config_text(const struct ln_config *c, size_t *n)
     for (i = 0; i < c->folders; i++) len += (size_t)snprintf(out + len, cap - len, "folder=%s\n", c->folder[i]);
     len += (size_t)snprintf(out + len, cap - len, "theme=%s\ncompact=%d\nglass=%d\n",
                             c->dark ? "dark" : "light", c->compact, c->glass);
+    if (c->autostart >= 0) len += (size_t)snprintf(out + len, cap - len, "autostart=%d\n", c->autostart);
     if (c->other) len += (size_t)snprintf(out + len, cap - len, "%s", c->other);
     if (n) *n = len;
     return out;

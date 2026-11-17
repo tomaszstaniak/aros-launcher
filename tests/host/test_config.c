@@ -61,6 +61,19 @@ int main(void)
     }
     ln_config_free(&c);
 
+    /* start with the system: undecided until a file says so, then kept */
+    memset(&c, 0, sizeof c);
+    assert(ln_config_parse(&c, "theme=dark\n", 11) && c.autostart == -1);
+    t = ln_config_text(&c, &n);
+    assert(!strstr(t, "autostart"));
+    free(t); ln_config_free(&c);
+    memset(&c, 0, sizeof c);
+    assert(ln_config_parse(&c, "autostart=0\n", 12) && c.autostart == 0);
+    c.autostart = 1;
+    t = ln_config_text(&c, &n);
+    assert(strstr(t, "autostart=1\n"));
+    free(t); ln_config_free(&c);
+
     /* an empty file: no folders, default looks */
     memset(&c, 0, sizeof c);
     assert(ln_config_parse(&c, "", 0) && c.folders == 0 && c.dark && c.glass);

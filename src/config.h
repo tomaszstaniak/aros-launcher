@@ -5,6 +5,7 @@
  *   theme=dark | light
  *   compact=0 | 1
  *   glass=0 | 1
+ *   autostart=0 | 1
  *
  * One setting per line; lines that are not understood are kept and
  * written back, so a file from a later version survives an older one. */
@@ -19,6 +20,7 @@ struct ln_config {
     char *folder[LN_FOLDERS_MAX];
     int folders;
     int dark, compact, glass;
+    int autostart;      /* start with the system: 1, 0, or -1 not decided yet */
     char *other;        /* lines kept as they were, each ending in a line feed */
 };
 

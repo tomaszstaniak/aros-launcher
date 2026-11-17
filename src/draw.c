@@ -148,7 +148,9 @@ static void right_text(struct cv *c, zt_font *f, const char *s, long right, int 
 const char *ln_source_name(int source)
 {
     switch (source) {
+    case LN_SRC_CALC: return "Calculator";
     case LN_SRC_PROGRAMS: return "Programs";
+    case LN_SRC_COMMANDS: return "Launcher";
     default: return "";
     }
 }
@@ -197,11 +199,12 @@ static void placeholder_icon(struct cv *c, const struct ln_row *w, int x, int y,
 {
     static const unsigned long tones[] = { 0xff3f7de0ul, 0xffe08a3ful, 0xff4aa56bul, 0xff8a62d6ul, 0xff888888ul, 0xffc9546bul };
     unsigned h = w->key * 2654435761u;
-    size_t n = w->title ? zt_next_cluster(w->title, strlen(w->title), 0) : 0;
+    const char *mark = w->source == LN_SRC_CALC ? "=" : w->title;
+    size_t n = mark ? zt_next_cluster(mark, strlen(mark), 0) : 0;
     fill_round(c, x, y, size, size, size / 4, tones[(h >> 16) % (sizeof tones / sizeof tones[0])]);
     if (n && size >= 20) {
-        long tw = zt_measure(f, w->title, n, 0);
-        text(c, f, w->title, n, x + (size - tw) / 2, y, size, 0xfffffffful, x, x + size, NULL, 0, 0);
+        long tw = zt_measure(f, mark, n, 0);
+        text(c, f, mark, n, x + (size - tw) / 2, y, size, 0xfffffffful, x, x + size, NULL, 0, 0);
     }
 }
 
@@ -302,7 +305,8 @@ int ln_draw(unsigned char *argb, const struct ln_layout *l, const struct ln_styl
 
     fill(&c, l->px, l->footer_y, l->pw, 1, s->rule);
     left = v->footer ? v->footer : srow ? srow->title : "";
-    right_text(&c, f->small, srow ? "Return  Open     Esc  Close" : "Esc  Close",
+    right_text(&c, f->small, !srow ? "Esc  Close" : srow->source == LN_SRC_CALC ? "Return  Copy     Esc  Close"
+               : srow->source == LN_SRC_COMMANDS ? "Return  Run     Esc  Close" : "Return  Open     Esc  Close",
                l->px + l->pw - s->pad, l->footer_y + 1, s->footer_h, s->dim);
     fitted(&c, f->small, left, l->px + s->pad, l->footer_y + 1, s->footer_h, l->px + l->pw - s->pad - 190,
            v->footer ? s->text : s->dim, NULL, 0);

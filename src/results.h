@@ -11,7 +11,8 @@
 
 #include "match.h"
 
-enum { LN_SRC_PROGRAMS = 1, LN_SRC_LAST = 8 };   /* order of sources in the list */
+/* The sources, in their order in the list. */
+enum { LN_SRC_CALC = 0, LN_SRC_PROGRAMS = 1, LN_SRC_COMMANDS = 3, LN_SRC_LAST = 8 };
 
 struct ln_row {
     int source;
