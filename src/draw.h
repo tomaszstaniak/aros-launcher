@@ -28,11 +28,27 @@ struct ln_fonts { zt_font *query, *title, *small; };
 /* The name of a source's section ("Results", "Calculator"). */
 const char *ln_source_name(int source);
 
+/* The part of the picture that does not change while the panel keeps its
+ * size: the shadow and the body over the backdrop. Kept between drawings so
+ * that moving the selection or typing does not compute it again. Zero it
+ * before the first use; ln_draw_cache_reset when the backdrop's pixels
+ * changed (the panel was opened again) and before freeing. */
+struct ln_draw_cache {
+    unsigned char *base;
+    int w, h, px, py, pw, ph;
+    const struct ln_style *style;
+    const unsigned char *backdrop;
+};
+void ln_draw_cache_reset(struct ln_draw_cache *c);
+
 /* Draws the whole picture into argb: l->w x l->h pixels, four bytes each
  * (A,R,G,B, straight alpha), rows of l->w pixels. Alpha is 0 outside the
  * panel's rounded outline and its shadow. 0 when out of memory (argb is
  * then cleared). */
 int ln_draw(unsigned char *argb, const struct ln_layout *l, const struct ln_style *s,
             const struct ln_view *v, const struct ln_fonts *f);
+/* The same, with the unchanging part taken from cache (may be NULL). */
+int ln_draw_cached(unsigned char *argb, const struct ln_layout *l, const struct ln_style *s,
+                   const struct ln_view *v, const struct ln_fonts *f, struct ln_draw_cache *cache);
 
 #endif

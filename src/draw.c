@@ -273,19 +273,49 @@ static void result_row(struct cv *c, const struct ln_layout *l, const struct ln_
     }
 }
 
+void ln_draw_cache_reset(struct ln_draw_cache *c)
+{
+    free(c->base);
+    memset(c, 0, sizeof *c);
+}
+
 int ln_draw(unsigned char *argb, const struct ln_layout *l, const struct ln_style *s,
             const struct ln_view *v, const struct ln_fonts *f)
+{
+    return ln_draw_cached(argb, l, s, v, f, NULL);
+}
+
+int ln_draw_cached(unsigned char *argb, const struct ln_layout *l, const struct ln_style *s,
+                   const struct ln_view *v, const struct ln_fonts *f, struct ln_draw_cache *cache)
 {
     struct cv c;
     int i, sel = ln_results_selected(v->results);
     const struct ln_row *srow = ln_results_row(v->results, sel);
     const char *left;
 
-    memset(argb, 0, (size_t)l->w * (size_t)l->h * 4);
-    c.p = argb; c.w = l->w; c.h = l->h;
-    if (!(c.cov = malloc((size_t)c.w * COV_H))) return 0;
+    size_t bytes = (size_t)l->w * (size_t)l->h * 4;
 
-    body(&c, l, s, v->backdrop);
+    c.p = argb; c.w = l->w; c.h = l->h;
+    if (!(c.cov = malloc((size_t)c.w * COV_H))) { memset(argb, 0, bytes); return 0; }
+
+    if (cache && cache->base && cache->w == l->w && cache->h == l->h && cache->px == l->px && cache->py == l->py
+        && cache->pw == l->pw && cache->ph == l->ph && cache->style == s && cache->backdrop == v->backdrop) {
+        memcpy(argb, cache->base, bytes);
+    } else {
+        memset(argb, 0, bytes);
+        body(&c, l, s, v->backdrop);
+        if (cache) {
+            unsigned char *keep = realloc(cache->base, bytes);
+            if (keep) {
+                memcpy(keep, argb, bytes);
+                cache->base = keep;
+                cache->w = l->w; cache->h = l->h; cache->px = l->px; cache->py = l->py;
+                cache->pw = l->pw; cache->ph = l->ph; cache->style = s; cache->backdrop = v->backdrop;
+            } else {
+                ln_draw_cache_reset(cache);
+            }
+        }
+    }
     query_line(&c, l, s, v, f->query);
     fill(&c, l->px, l->list_y - 1, l->pw, 1, s->rule);
 

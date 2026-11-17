@@ -150,6 +150,31 @@ int main(void)
     draw(s, &v, &f, 0, 0);
     assert(count(l.px, l.footer_y + 1, l.px + 300, l.footer_y + s->footer_h, s->text) > 0);
 
+    /* with the cache the picture is the same, pixel for pixel, also after
+       the selection moved and after the size changed */
+    {
+        struct ln_draw_cache cache;
+        unsigned char *plain;
+        size_t bytes;
+        int round;
+        memset(&cache, 0, sizeof cache);
+        v.footer = NULL;
+        for (round = 0; round < 4; round++) {
+            if (round == 1) ln_results_move(r, 1);
+            if (round == 3) { unsigned q2 = ln_results_query(r); assert(ln_results_answer(r, q2, LN_SRC_PROGRAMS, w, 1)); }
+            ln_layout_make(&l, s, r, 0, 24);
+            bytes = (size_t)l.w * (size_t)l.h * 4;
+            plain = malloc(bytes);
+            free(pic); pic = malloc(bytes);
+            assert(ln_draw(plain, &l, s, &v, &f));
+            assert(ln_draw_cached(pic, &l, s, &v, &f, &cache));
+            assert(!memcmp(plain, pic, bytes));
+            if (round == 2) { assert(ln_draw_cached(pic, &l, s, &v, &f, &cache)); assert(!memcmp(plain, pic, bytes)); }
+            free(plain);
+        }
+        ln_draw_cache_reset(&cache);
+    }
+
     /* the other looks draw without touching memory they should not (ASan) */
     draw(ln_style_get(1, 1), &v, &f, 0, 16);
     draw(ln_style_get(0, 0), &v, &f, 0, 16);

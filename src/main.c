@@ -66,6 +66,8 @@ struct panel {
     unsigned char *pic, *under, *glass;
     struct Region *region;
     struct ln_layout l;
+    struct ln_draw_cache cache;
+    int dirty;                      /* something changed: draw once the pending input is handled */
     int first;
     ze_doc *doc;
     struct ln_results *res;
@@ -449,7 +451,7 @@ static void paint(struct panel *p)
     memset(p->pic, 0, (size_t)p->w * (size_t)p->h * 4);
     /* the picture never leaves its buffer, whatever the layout says */
     if (p->l.w > p->w || p->l.h > p->h) { note("layout %dx%d does not fit %dx%d", p->l.w, p->l.h, p->w, p->h); return; }
-    ln_draw(p->pic, &p->l, p->style, &v, &p->f);
+    ln_draw_cached(p->pic, &p->l, p->style, &v, &p->f, &p->cache);
 }
 
 static void show(struct panel *p)
@@ -465,6 +467,7 @@ static void close_panel(const char *why)
     CloseWindow(p->win);
     p->win = NULL;
     if (p->region) { DisposeRegion(p->region); p->region = NULL; }
+    ln_draw_cache_reset(&p->cache);
     free(p->pic); free(p->under); free(p->glass);
     p->pic = p->under = p->glass = NULL;
     note("close %s", why);
@@ -704,7 +707,7 @@ static void panel_key(const struct IntuiMessage *im)
         break;
     }
     }
-    show(p);
+    p->dirty = 1;
 }
 
 static void panel_events(void)
@@ -721,7 +724,7 @@ static void panel_events(void)
         case IDCMP_RAWKEY: panel_key(&m); break;
         case IDCMP_INACTIVEWINDOW: close_panel("inactive"); break;
         case IDCMP_INTUITICKS:
-            if (++p->ticks >= 5) { p->ticks = 0; p->caret_on = !p->caret_on; show(p); }
+            if (++p->ticks >= 5) { p->ticks = 0; p->caret_on = !p->caret_on; p->dirty = 1; }
             break;
         case IDCMP_MOUSEBUTTONS:
             if (m.Code == SELECTDOWN) {
@@ -730,7 +733,7 @@ static void panel_events(void)
                     int twice = row == p->click_row && DoubleClick(p->click_secs, p->click_micros, m.Seconds, m.Micros);
                     p->click_row = row; p->click_secs = m.Seconds; p->click_micros = m.Micros;
                     ln_results_select(p->res, row);
-                    if (twice) run_selected(); else show(p);
+                    if (twice) run_selected(); else p->dirty = 1;
                 } else if (!ln_layout_inside(&p->l, p->style, m.MouseX, m.MouseY)) {
                     close_panel("click outside");
                 }
@@ -738,6 +741,9 @@ static void panel_events(void)
             break;
         }
     }
+    /* one drawing for everything that was waiting: held keys do not queue up drawings */
+    if (p->win && p->dirty) show(p);
+    p->dirty = 0;
 }
 
 /* --- the scanner's messages ---------------------------------------------- */
