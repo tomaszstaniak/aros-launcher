@@ -22,5 +22,16 @@ int main(void)
     assert(!currency_parse_ecb("<Cube time='2026-11-16'></Cube>", 31, &r));
     assert(!currency_parse_ecb("<Cube currency='USD' rate='1.08'/>", 34, &r));
     assert(!currency_parse_ecb("<Cube time='2026-11-16'><Cube currency='USD' rate='1.08'", 56, &r));
+    {
+        struct currency_rates d[2];
+        const char *hist = "<Cube><Cube time=\"2026-11-17\"><Cube currency=\"USD\" rate=\"1.10\"/><Cube currency=\"PLN\" rate=\"4.40\"/></Cube>"
+            "<Cube time=\"2026-11-16\"><Cube currency=\"USD\" rate=\"1.08\"/></Cube>"
+            "<Cube time=\"2026-11-13\"><Cube currency=\"USD\" rate=\"1.07\"/></Cube></Cube>";
+        assert(currency_parse_ecb_days(hist, strlen(hist), d, 2) == 2);
+        assert(!strcmp(d[0].date, "2026-11-17") && d[0].n == 2 && !strcmp(d[1].date, "2026-11-16") && d[1].n == 1);
+        assert(d[1].rate[0] > 1.079 && d[1].rate[0] < 1.081);
+        assert(currency_parse_ecb(hist, strlen(hist), &r) && r.n == 2);
+        assert(currency_parse_ecb_days(xml, strlen(xml), d, 2) == 1);
+    }
     return 0;
 }

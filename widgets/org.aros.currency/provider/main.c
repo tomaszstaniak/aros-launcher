@@ -3,14 +3,19 @@
  *
  *   CurrencyProvider "<request file>"
  *
- * Operation "rates": fetches the European Central Bank's daily reference
- * rates and answers with
- *   - one row per currency (label: its code, value: how much of it one euro
- *     buys), for a host that converts by itself, and
- *   - the fields "date" and "base", and for the pair named in the settings
- *     ("from", "to", default EUR and USD) "pair" ("EUR/USD"), "rate" and
- *     "summary" ("1 EUR = 1.1014 USD, ECB 2026-11-16"), for a host that
- *     shows one number. */
+ * Operation "rates": fetches the European Central Bank's reference rates of
+ * the last days and answers with
+ *   - the user's currency: the setting "currency", else the one of the
+ *     system's locale, else EUR in Europe's time zones and USD elsewhere;
+ *   - rows of the section "top": five well-known currencies other than the
+ *     user's, each with the price of one unit in the user's currency
+ *     (value), the change since the previous day of rates (detail, as a
+ *     percentage) and that change as the row's plot number;
+ *   - rows of the section "all": every currency of the bank (label: code,
+ *     value: how much of it one euro buys), for a host that converts;
+ *   - fields: "date", "base", "own", "heading", "basis", and for the first
+ *     row of "top" "pair", "rate" and "summary", for a host that shows one
+ *     number. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,10 +28,14 @@
 
 #ifdef __AROS__
 #include <dos/dos.h>
+#include <libraries/locale.h>
 #include <proto/dos.h>
+#include <proto/exec.h>
+#include <proto/locale.h>
 #endif
 
-#define ECB_URL "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml"
+/* about 60 days of rates, newest first; the first two are used */
+#define ECB_URL "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist-90d.xml"
 
 static int str(const struct ZkJson *j, int o, const char *k, char *v, size_t cap)
 {
@@ -63,72 +72,113 @@ static double rate_of(const struct currency_rates *r, const char *code)
     return 0;
 }
 
-/* A currency code from the settings: three letters, upper case; the
- * default when the setting is missing or is not one. */
-static void code_setting(const struct ZkJson *j, int settings, const char *key, const char *fallback, char out[4])
+/* Three letters, upper case, from text; 0 when it is not a currency code. */
+static int code_from(const char *text, char out[4])
+{
+    int i;
+    while (*text == ' ') text++;
+    for (i = 0; i < 3; i++) {
+        char c = text[i];
+        if (c >= 'a' && c <= 'z') c = (char)(c - 32);
+        if (c < 'A' || c > 'Z') return 0;
+        out[i] = c;
+    }
+    out[3] = 0;
+    for (text += 3; *text; text++) if (*text != ' ') return 0;
+    return 1;
+}
+
+/* The user's currency. From the setting when it names one the bank lists
+ * (its default, "auto", names none);
+ * else from the system's locale (its international currency symbol); else
+ * EUR where the clock is zero to three hours east of Greenwich, USD
+ * elsewhere. */
+static void own_currency(const struct ZkJson *j, const struct currency_rates *rates, char out[4])
 {
     char text[16];
-    int i, ok = settings >= 0 && zk_json_string(j, zk_json_get(j, settings, key), text, sizeof text) && strlen(text) == 3;
-    for (i = 0; ok && i < 3; i++) {
-        if (text[i] >= 'a' && text[i] <= 'z') text[i] = (char)(text[i] - 32);
-        if (text[i] < 'A' || text[i] > 'Z') ok = 0;
+    int settings = zk_json_get(j, 0, "settings"), europe = 0;
+    if (settings >= 0 && zk_json_string(j, zk_json_get(j, settings, "currency"), text, sizeof text) &&
+        code_from(text, out) && rate_of(rates, out) > 0) return;
+#ifdef __AROS__
+    {
+        struct Library *LocaleBase = OpenLibrary((CONST_STRPTR)"locale.library", 38);
+        if (LocaleBase) {
+            struct Locale *locale = OpenLocale(NULL);
+            int found = 0;
+            if (locale) {
+                found = locale->loc_MonIntCS && code_from((const char *)locale->loc_MonIntCS, out) && rate_of(rates, out) > 0;
+                europe = locale->loc_GMTOffset <= 0 && locale->loc_GMTOffset >= -180;
+                CloseLocale(locale);
+            }
+            CloseLibrary(LocaleBase);
+            if (found) return;
+        }
     }
-    memcpy(out, ok ? text : fallback, 3);
-    out[3] = 0;
+#endif
+    strcpy(out, europe ? "EUR" : "USD");
 }
 
-static void pair_fields(const struct ZkJson *j, const char *input, const struct currency_rates *rates, struct ZkWidgetSnapshot *reply)
+/* A price for people: two decimals from 100 up, four from 1, five below. */
+static void price(double v, char *out, size_t cap)
 {
-    char from[4], to[4];
-    int settings = zk_json_get(j, 0, "settings"), n = reply->field_count;
-    double a, b;
-    (void)input;
-    code_setting(j, settings, "from", "EUR", from);
-    code_setting(j, settings, "to", "USD", to);
-    a = rate_of(rates, from);
-    b = rate_of(rates, to);
-    strcpy(reply->fields[n].key, "pair");
-    snprintf(reply->fields[n].text, sizeof reply->fields[n].text, "%s/%s", from, to);
-    n++;
-    strcpy(reply->fields[n].key, "rate");
-    strcpy(reply->fields[n + 1].key, "summary");
-    if (a > 0 && b > 0) {
-        /* as text, four significant digits: short enough for a dock tile */
-        snprintf(reply->fields[n].text, sizeof reply->fields[n].text, "%.4g", b / a);
-        snprintf(reply->fields[n + 1].text, sizeof reply->fields[n + 1].text, "1 %s = %.4f %s", from, b / a, to);
-    } else {
-        strcpy(reply->fields[n].text, "--");
-        snprintf(reply->fields[n + 1].text, sizeof reply->fields[n + 1].text, "The bank lists no rate for %s", a > 0 ? to : from);
-    }
-    reply->field_count = n + 2;
+    snprintf(out, cap, v >= 100 ? "%.2f" : v >= 1 ? "%.4f" : "%.5f", v);
 }
 
-/* The rows, all for one unit of the chosen "from" currency: first the
- * section "main" (a host shows it as a short list), then "all" (shown a
- * page at a time). A host that knows no sections sees one list. */
-static void rate_rows(const struct ZkJson *j, const struct currency_rates *rates, struct ZkWidgetSnapshot *reply)
+static void answer_rates(const struct ZkJson *j, const struct currency_rates *days, int day_count, struct ZkWidgetSnapshot *reply)
 {
-    static const char *const main_codes[] = { "EUR", "USD", "GBP", "CHF", "JPY", "PLN" };
-    char from[4];
-    double a, b;
-    int i, n = 0, shown = 0;
-    code_setting(j, zk_json_get(j, 0, "settings"), "from", "EUR", from);
-    a = rate_of(rates, from);
-    if (a <= 0) { strcpy(from, "EUR"); a = 1; }
-    for (i = 0; i < (int)(sizeof main_codes / sizeof *main_codes) && shown < 5 && n < ZW_ROWS; i++) {
-        if (!strcmp(main_codes[i], from) || (b = rate_of(rates, main_codes[i])) <= 0) continue;
-        snprintf(reply->rows[n].label, sizeof reply->rows[n].label, "%s", main_codes[i]);
-        snprintf(reply->rows[n].value, sizeof reply->rows[n].value, "%.5g", b / a);
-        snprintf(reply->rows[n].detail, sizeof reply->rows[n].detail, "1 %s", from);
-        strcpy(reply->rows[n].section, "main");
-        n++; shown++;
+    static const char *const top[] = { "EUR", "USD", "GBP", "CHF", "JPY", "CAD" };
+    const struct currency_rates *now = &days[0], *before = day_count > 1 ? &days[1] : NULL;
+    char own[4], shown[32];
+    double mine, mine_before;
+    int i, n = 0, f = 0;
+
+    own_currency(j, now, own);
+    mine = rate_of(now, own);
+    mine_before = before ? rate_of(before, own) : 0;
+
+    strcpy(reply->fields[f].key, "date");
+    snprintf(reply->fields[f++].text, sizeof reply->fields[0].text, "%s", now->date);
+    strcpy(reply->fields[f].key, "base");
+    strcpy(reply->fields[f++].text, "EUR");
+    strcpy(reply->fields[f].key, "own");
+    strcpy(reply->fields[f++].text, own);
+    strcpy(reply->fields[f].key, "heading");
+    snprintf(reply->fields[f++].text, sizeof reply->fields[0].text, "Exchange rates in %s", own);
+    strcpy(reply->fields[f].key, "basis");
+    if (before) snprintf(reply->fields[f++].text, sizeof reply->fields[0].text, "Reference rates of %s, change since %s", now->date, before->date);
+    else snprintf(reply->fields[f++].text, sizeof reply->fields[0].text, "Reference rates of %s", now->date);
+
+    for (i = 0; i < (int)(sizeof top / sizeof *top) && n < 5; i++) {
+        struct ZkWidgetRow *row = &reply->rows[n];
+        double theirs = rate_of(now, top[i]), theirs_before = before ? rate_of(before, top[i]) : 0, v;
+        if (!strcmp(top[i], own) || theirs <= 0) continue;
+        v = mine / theirs;
+        snprintf(row->label, sizeof row->label, "%s", top[i]);
+        price(v, shown, sizeof shown);
+        snprintf(row->value, sizeof row->value, "%s", shown);
+        strcpy(row->section, "top");
+        if (mine_before > 0 && theirs_before > 0) {
+            double change = (v / (mine_before / theirs_before) - 1) * 100;
+            if (change > -0.005 && change < 0.005) change = 0;
+            snprintf(row->detail, sizeof row->detail, "%s%.2f%%", change > 0 ? "+" : "", change);
+            row->plot = change;
+            row->has_plot = 1;
+        }
+        if (!n) {
+            strcpy(reply->fields[f].key, "pair");
+            snprintf(reply->fields[f++].text, sizeof reply->fields[0].text, "%s/%s", top[i], own);
+            /* as text, four significant digits: short enough for a dock tile */
+            strcpy(reply->fields[f].key, "rate");
+            snprintf(reply->fields[f++].text, sizeof reply->fields[0].text, "%.4g", v);
+            strcpy(reply->fields[f].key, "summary");
+            snprintf(reply->fields[f++].text, sizeof reply->fields[0].text, "1 %s = %s %s", top[i], shown, own);
+        }
+        n++;
     }
-    for (i = -1; i < rates->n && n < ZW_ROWS; i++) {
-        const char *code = i < 0 ? "EUR" : rates->code[i];
-        if (!strcmp(code, from)) continue;
-        b = i < 0 ? 1 : rates->rate[i];
-        snprintf(reply->rows[n].label, sizeof reply->rows[n].label, "%s", code);
-        snprintf(reply->rows[n].value, sizeof reply->rows[n].value, "%.6g", b / a);
+    reply->field_count = f;
+    for (i = 0; i < now->n && n < ZW_ROWS; i++) {
+        snprintf(reply->rows[n].label, sizeof reply->rows[n].label, "%s", now->code[i]);
+        snprintf(reply->rows[n].value, sizeof reply->rows[n].value, "%.6g", now->rate[i]);
         strcpy(reply->rows[n].section, "all");
         n++;
     }
@@ -141,11 +191,11 @@ int main(int argc, char **argv)
     char *input, *body = NULL;
     struct ZkJson *j = malloc(sizeof *j);
     struct ZkWidgetSnapshot *reply = calloc(1, sizeof *reply);
-    struct currency_rates *rates = malloc(sizeof *rates);
+    struct currency_rates *rates = malloc(2 * sizeof *rates);
     char operation[32], temporary[ZW_PATH], completed[ZW_PATH];
     const char *why = NULL;
     size_t size = 0;
-    int result = 5, g = 0, api = 0, a, b, ok;
+    int result = 5, g = 0, api = 0, a, b, ok, days;
     FILE *f;
 
     if (argc != 2) return 5;
@@ -170,22 +220,13 @@ int main(int argc, char **argv)
         strcpy(reply->message, "Missing operation");
     } else if (strcmp(operation, "rates")) {
         strcpy(reply->message, "Unsupported operation");
-    } else if (zk_https_get(ECB_URL, 64u * 1024u, &body, &size, reply->message, sizeof reply->message)) {
-        if (currency_parse_ecb(body, size, rates)) {
+    } else if (zk_https_get(ECB_URL, 512u * 1024u, &body, &size, reply->message, sizeof reply->message)) {
+        if ((days = currency_parse_ecb_days(body, size, rates, 2)) > 0) {
             reply->status = ZW_READY;
             strcpy(reply->attribution, "European Central Bank");
             strcpy(reply->url, "https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/");
-            strcpy(reply->fields[0].key, "date");
-            snprintf(reply->fields[0].text, sizeof reply->fields[0].text, "%s", rates->date);
-            strcpy(reply->fields[1].key, "base");
-            strcpy(reply->fields[1].text, "EUR");
-            /* second line under the rate on a host's card */
-            strcpy(reply->fields[2].key, "source");
-            snprintf(reply->fields[2].text, sizeof reply->fields[2].text, "Reference rate of %s", rates->date);
-            reply->field_count = 3;
-            pair_fields(j, input, rates, reply);
             strcpy(reply->icon, "currency");
-            rate_rows(j, rates, reply);
+            answer_rates(j, rates, days, reply);
         } else {
             strcpy(reply->message, "The bank's file has no rates in the expected form");
         }

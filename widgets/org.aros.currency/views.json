@@ -1,16 +1,15 @@
 {
   "schema": 1,
   "compact": { "primary": "rate", "secondary": "pair", "icon": "currency", "tooltip": "summary" },
-  "expanded": {
-    "component": "cards",
-    "title": "pair",
-    "value": "rate",
-    "subtitle": "summary",
-    "range": "source",
-    "strip": "all",
-    "stripTitle": "All currencies",
-    "list": "main",
-    "listTitle": "Main currencies"
-  },
+  "expanded": [
+    { "text": "heading" },
+    { "text": "basis", "style": "muted" },
+    { "spacer": 10 },
+    { "list": "top", "max": 5, "row": [
+      { "text": "label" },
+      { "trend": "plot", "text": "detail", "align": "right" },
+      { "text": "value", "align": "right" }
+    ] }
+  ],
   "assets": "assets/conditions.json"
 }

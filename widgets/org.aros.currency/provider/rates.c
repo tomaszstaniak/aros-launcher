@@ -26,10 +26,13 @@ static int attribute(const char *tag, const char *end, const char *name, char *o
     return 0;
 }
 
-int currency_parse_ecb(const char *xml, size_t n, struct currency_rates *out)
+int currency_parse_ecb_days(const char *xml, size_t n, struct currency_rates *days, int max)
 {
     const char *p = xml, *end = xml + n;
-    memset(out, 0, sizeof *out);
+    struct currency_rates *out = NULL;
+    int count = 0;
+    if (max < 1) return 0;
+    memset(days, 0, sizeof *days * (size_t)max);
     while (p < end) {
         const char *tag = memchr(p, '<', (size_t)(end - p)), *close;
         char code[8], rate[32], date[16];
@@ -37,9 +40,12 @@ int currency_parse_ecb(const char *xml, size_t n, struct currency_rates *out)
         close = memchr(tag, '>', (size_t)(end - tag));
         if (!close) break;
         if (close - tag > 5 && !memcmp(tag, "<Cube", 5)) {
-            if (attribute(tag, close, "time", date, sizeof date) && strlen(date) == 10)
+            if (attribute(tag, close, "time", date, sizeof date) && strlen(date) == 10) {
+                if (count == max) break;
+                out = &days[count++];
                 memcpy(out->date, date, 11);
-            if (attribute(tag, close, "currency", code, sizeof code) && strlen(code) == 3 &&
+            }
+            if (out && attribute(tag, close, "currency", code, sizeof code) && strlen(code) == 3 &&
                 attribute(tag, close, "rate", rate, sizeof rate) && out->n < CURRENCY_MAX) {
                 char *stop;
                 double v = strtod(rate, &stop);
@@ -52,5 +58,13 @@ int currency_parse_ecb(const char *xml, size_t n, struct currency_rates *out)
         }
         p = close + 1;
     }
-    return out->date[0] && out->n > 0;
+    /* a day without rates ends the usable part */
+    for (n = 0; (int)n < count; n++)
+        if (!days[n].n) { count = (int)n; break; }
+    return count;
+}
+
+int currency_parse_ecb(const char *xml, size_t n, struct currency_rates *out)
+{
+    return currency_parse_ecb_days(xml, n, out, 1) == 1;
 }
