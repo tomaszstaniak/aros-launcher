@@ -77,17 +77,26 @@ int ln_prefs_run(struct ln_config *c, const struct ln_about *about, int page)
 {
     static const char *themes[] = { "Dark", "Light", NULL };
     static const char *pages[] = { "Programs", "Files", "Look", "General", "About", NULL };
-    static char facts[400];
+    static char facts[400], title[80], known[200], values[300];
     Object *app, *win, *reg, *programs, *files, *exclude, *pattern, *theme, *compact, *glass, *start;
     Object *add_p, *rem_p, *add_f, *rem_f, *add_xd, *add_xp, *rem_x, *save, *cancel;
     int saved = 0, running = 1, i;
     ULONG sigs = 0;
 
+    snprintf(title, sizeof title, "\33c\33b%s", about->version);
     snprintf(facts, sizeof facts,
-             "\33c\33b%s\33n\n\nA keyboard launcher: press %s, type, press Return.\n\n"
-             "%d programs, %d files and %d packages known.\n%s%s",
-             about->version, about->hotkey, about->programs, about->files, about->packages,
-             about->rates_date[0] ? "Exchange rates of " : "No exchange rates yet.", about->rates_date);
+             "Hotkey\t%s\nPrograms\t%d\nFiles\t%d\nPackages\t%d\nExchange rates\t%s",
+             about->hotkey, about->programs, about->files, about->packages,
+             about->rates_date[0] ? about->rates_date : "not fetched yet");
+    for (i = 0, known[0] = values[0] = 0; facts[i]; ) {
+        /* two columns: the names and the values */
+        char *tab = strchr(facts + i, '\t'), *end = strchr(facts + i, '\n');
+        size_t line = end ? (size_t)(end - (facts + i)) : strlen(facts + i);
+        if (!tab) break;
+        snprintf(known + strlen(known), sizeof known - strlen(known), "%s%.*s", known[0] ? "\n" : "\33r", (int)(tab - (facts + i)), facts + i);
+        snprintf(values + strlen(values), sizeof values - strlen(values), "%s%.*s", values[0] ? "\n" : "\33b", (int)(facts + i + line - tab - 1), tab + 1);
+        i += (int)line + (end ? 1 : 0);
+    }
 
     if (!(MUIMasterBase = OpenLibrary((CONST_STRPTR)"muimaster.library", 19))) return 0;
     app = ApplicationObject,
@@ -148,14 +157,25 @@ int ln_prefs_run(struct ln_config *c, const struct ln_about *about, int page)
                     End),
                     /* About */
                     Child, (IPTR)(VGroup,
-                        Child, (IPTR)(TextObject, TextFrame, MUIA_Background, MUII_TextBack, MUIA_Text_Contents, (IPTR)facts, End),
-                        Child, (IPTR)(TextObject, MUIA_Text_Contents, (IPTR)
-                            "Exchange rates: European Central Bank, euro reference rates.\n"
-                            "Weather: Open-Meteo (CC BY 4.0), through Dockbar's Weather widget.\n"
-                            "The Currency widget contains curl and OpenSSL; their licences are\n"
-                            "in Widgets/org.aros.currency/licenses.\n\n"
-                            "MIT licence.", End),
+                        Child, (IPTR)VSpace(4),
+                        Child, (IPTR)(TextObject, MUIA_Text_Contents, (IPTR)title, MUIA_Font, MUIV_Font_Big, End),
+                        Child, (IPTR)(TextObject, MUIA_Text_Contents, (IPTR)"\33cType a few letters, press Return.", End),
+                        Child, (IPTR)VSpace(4),
+                        Child, (IPTR)(HGroup, GroupFrameT("Now"),
+                            Child, (IPTR)HSpace(0),
+                            Child, (IPTR)(TextObject, MUIA_Text_Contents, (IPTR)known, End),
+                            Child, (IPTR)(TextObject, MUIA_Text_Contents, (IPTR)values, End),
+                            Child, (IPTR)HSpace(0),
+                        End),
+                        Child, (IPTR)(VGroup, GroupFrameT("Data and licences"),
+                            Child, (IPTR)(TextObject, MUIA_Text_Contents, (IPTR)
+                                "Exchange rates: European Central Bank, euro reference rates.\n"
+                                "Weather: Open-Meteo (CC BY 4.0), through Dockbar's Weather widget.\n"
+                                "The Currency widget contains curl and OpenSSL; their licences\n"
+                                "are in Widgets/org.aros.currency/licenses.", End),
+                        End),
                         Child, (IPTR)VSpace(0),
+                        Child, (IPTR)(TextObject, MUIA_Text_Contents, (IPTR)"\33cMIT licence", End),
                     End),
                 End),
                 Child, (IPTR)(HGroup,

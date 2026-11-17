@@ -1,4 +1,4 @@
-Launcher 0.2, test build @LABEL@ (@TARGET@)
+Launcher @VERSION@ (@TARGET@)
 
 A keyboard launcher for AROS. Press the hotkey, type a few letters of a
 program's name, press Return.

@@ -60,7 +60,7 @@
 #include "zk_present.h"
 #include "zk_text_aros.h"
 
-static const char version[] __attribute__((used)) = "$VER: Launcher 0.2 (17.11.2026)";
+static const char version[] __attribute__((used)) = "$VER: Launcher 0.3 (17.11.2026)";
 
 #define EVT_HOTKEY 1
 #define SHADOW 28
@@ -126,6 +126,7 @@ static struct {
     /* the file index: the one in use and the one being filled by a walk */
     struct ln_fileindex *files, *files_next;
     char files_path[272];
+    double files_walked;            /* when the file index was last asked for */
     char act_path[600];     /* the path the actions of a program or file work on */
     /* ARexx: the launcher's own port, and the port answers to what it sent come to */
     struct MsgPort *rexxport, *rexxreply;
@@ -401,6 +402,18 @@ struct RxsLib *RexxSysBase;
 static char port_names[PORTS_MAX][48];
 static int port_count;
 
+/* The system's list has every public port, and most are not ARexx ports: a
+ * Rexx message sent to a handler's or a device's port is read as something
+ * else. Nothing marks an ARexx port, but by convention its name is upper
+ * case without spaces ("address" upper-cases an unquoted name), so only
+ * such names are offered. */
+static int rexx_name(const char *name)
+{
+    for (; *name; name++)
+        if (!((*name >= 'A' && *name <= 'Z') || (*name >= '0' && *name <= '9') || *name == '_' || *name == '.' || *name == '-')) return 0;
+    return 1;
+}
+
 static void snapshot_ports(void)
 {
     struct Node *n;
@@ -408,6 +421,7 @@ static void snapshot_ports(void)
     Forbid();
     for (n = SysBase->PortList.lh_Head; n->ln_Succ && port_count < PORTS_MAX; n = n->ln_Succ) {
         if (!n->ln_Name || !n->ln_Name[0] || strlen(n->ln_Name) >= sizeof port_names[0]) continue;
+        if (!rexx_name(n->ln_Name)) continue;
         strcpy(port_names[port_count++], n->ln_Name);
     }
     Permit();
@@ -435,6 +449,7 @@ static int rexx_send(const char *port, const char *command)
     size_t k = 0;
     char *local;
     int sent = 0;
+    if (!rexx_name(port)) return 0;      /* typed by hand: the same rule as for the list */
     if (!RexxSysBase || !(local = zt_local_copy(command, strlen(command), &k))) return 0;
     if ((m = CreateRexxMsg(app.rexxreply, NULL, NULL))) {
         if ((m->rm_Args[0] = (IPTR)CreateArgstring((STRPTR)local, (ULONG)k))) {
@@ -1252,6 +1267,13 @@ static struct Screen *pick_screen(void)
 
 static int open_panel(const char *footer)
 {
+    /* The file index is walked at start, after a change of the settings and
+     * on "Rescan"; a panel opened later than ten minutes after the last walk
+     * asks for a new one, in the background. */
+    if (app.cfg.files_n && app.scan && (double)time(NULL) - app.files_walked > 600) {
+        app.files_walked = (double)time(NULL);
+        ln_scan_files(app.scan);
+    }
     struct panel *p = &app.p;
     struct Screen *scr;
     struct Window *helper = NULL;
@@ -1780,6 +1802,7 @@ static void scan_events(void)
                 loud(was);
                 app.index_changed = 1;
                 note("files indexed: %d", ln_fileindex_count(app.files));
+                app.files_walked = (double)time(NULL);
             }
             break;
         case LN_SCAN_PACKAGES: {
@@ -1980,6 +2003,7 @@ int main(int argc, char **argv)
         note("files: %d kept from last time", app.files ? ln_fileindex_count(app.files) : 0);
     }
     app.scan = ln_scan_start(app.scanport, app.cfg.folder, app.cfg.folders, app.cfg.files, app.cfg.files_n, app.cfg.exclude, app.cfg.exclude_n);
+    app.files_walked = (double)time(NULL);
     rates_init();
     rates_refresh();
     note("ready folders=%d scanner=%d", app.cfg.folders, app.scan != NULL);

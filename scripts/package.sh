@@ -1,13 +1,14 @@
 #!/bin/bash
 # Packs a test build for one target from an existing scripts/build.sh output:
-#   LAUNCHER_TARGET=<target> LAUNCHER_LABEL=test1 scripts/package.sh
-# Writes dist/Launcher-<version>-<label>-<archive name>.zip and adds its
+#   LAUNCHER_TARGET=<target> scripts/package.sh
+# Writes dist/Launcher-<version>-<archive name>.zip (LAUNCHER_LABEL, when
+# set, goes between the version and the archive name) and adds its
 # checksum to dist/SHA256SUMS. An archive that exists is never replaced.
 set -euo pipefail
 . "$(dirname "$0")/env.sh"
 . "$LAUNCHER_ROOT/scripts/target.sh"
 R=$LAUNCHER_ROOT
-label=${LAUNCHER_LABEL:?Set LAUNCHER_LABEL, for example test1}
+label=${LAUNCHER_LABEL:-}
 version=$(sed -n 's/.*\$VER: Launcher \([0-9.]*\) .*/\1/p' "$R/src/main.c")
 [ -n "$version" ] || { echo "No version in src/main.c" >&2; exit 1; }
 case "$ln_target" in
@@ -17,9 +18,9 @@ case "$ln_target" in
 esac
 bin=$ln_build/Launcher
 [ -x "$bin" ] || { echo "Run scripts/build.sh first" >&2; exit 1; }
-name=Launcher-$version-$label-$arch
+name=Launcher-$version${label:+-$label}-$arch
 out=$R/dist/$name.zip
-[ ! -e "$out" ] || { echo "$out exists; delivered archives are not replaced (use a new label)" >&2; exit 1; }
+[ ! -e "$out" ] || { echo "$out exists; delivered archives are not replaced (raise the version)" >&2; exit 1; }
 work=$ln_build/package
 rm -rf "$work"
 mkdir -p "$work/Launcher" "$R/dist"
@@ -30,7 +31,7 @@ mkdir -p "$work/Launcher/Widgets"
 cp -R "$ln_build/Widgets/org.aros.currency" "$work/Launcher/Widgets/"
 cp "$R/packaging/Launcher.info" "$work/Launcher/Launcher.info"
 cp "$R/packaging/drawer.info" "$work/Launcher.info"
-sed -e "s/@LABEL@/$label/" -e "s/@TARGET@/$arch/" -e "s|@REQUIRES@|$requires|" "$R/packaging/ReadMe.txt" > "$work/Launcher/ReadMe.txt"
+sed -e "s/@VERSION@/$version/" -e "s/@TARGET@/$arch/" -e "s|@REQUIRES@|$requires|" "$R/packaging/ReadMe.txt" > "$work/Launcher/ReadMe.txt"
 # Nothing in the package names the machine it was built on. /home/vsts is
 # the AROS project's own build service, whose paths are inside the contrib
 # curl and OpenSSL of the official Pi SDK.
