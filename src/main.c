@@ -401,23 +401,27 @@ static void answer(void)
        found as programs */
     memset(row, 0, sizeof row);
     total = 0;
-    /* by name (letters in order, as for programs) or, from three letters
-       on, by words of the description; a name match comes first */
-    for (i = 0; qn >= 2 && i < app.pkgs.n && total < 5; i++) {
-        const struct ln_pkg *g = &app.pkgs.v[i];
-        int by_name, by_text = 0;
-        if (g->installed) continue;
-        by_name = ln_match(q, qn, g->id, strlen(g->id), &row[total].m);
-        if (!by_name && qn >= 3 && g->summary)
-            by_text = zt_contains_folded(g->summary, strlen(g->summary), q, qn) == 1;
-        if (!by_name && !by_text) continue;
-        if (!by_name) memset(&row[total].m, 0, sizeof row[total].m);
-        row[total].key = (unsigned)i;
-        row[total].title = g->id;
-        row[total].subtitle = g->summary ? g->summary : "";
-        row[total].kind = g->version ? g->version : "Package";
-        row[total].score = by_name ? 1000 + row[total].m.score : 0;
-        total++;
+    /* by name (letters in order, as for programs) and, from three letters
+       on, by words of the description; name matches first, five in all */
+    {
+        int pass;
+        for (pass = 0; pass < 2; pass++)
+            for (i = 0; qn >= (pass ? 3u : 2u) && i < app.pkgs.n && total < 5; i++) {
+                const struct ln_pkg *g = &app.pkgs.v[i];
+                struct ln_match m1;
+                int by_name;
+                if (g->installed) continue;
+                by_name = ln_match(q, qn, g->id, strlen(g->id), &m1);
+                if (pass == 0 && !by_name) continue;
+                if (pass == 1 && (by_name || !g->summary || zt_contains_folded(g->summary, strlen(g->summary), q, qn) != 1)) continue;
+                if (pass == 0) row[total].m = m1;
+                row[total].key = (unsigned)i;
+                row[total].title = g->id;
+                row[total].subtitle = g->summary ? g->summary : "";
+                row[total].kind = g->version ? g->version : "Package";
+                row[total].score = pass == 0 ? 1000 + m1.score : 0;
+                total++;
+            }
     }
     ln_results_answer(p->res, cur, LN_SRC_PACKAGES, row, total);
 }
