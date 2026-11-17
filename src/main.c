@@ -107,7 +107,8 @@ static struct {
     unsigned act_key;
     char act_title[200];
     char act_query[256];    /* the query to come back to */
-    int quit, want_prefs;
+    int quit, want_prefs, prefs_page;
+    char hotkey[64];
     unsigned confirm;       /* a command waiting for a second Return */
     struct ln_pkglist pkgs; /* apkg's catalogue */
     char apkg[64];          /* apkg's path, "" when there is none */
@@ -756,11 +757,12 @@ static const struct action package_actions[] = {
 };
 
 /* What the launcher itself can do, found by name like programs. */
-enum { CMD_SETTINGS = 1, CMD_RESCAN, CMD_QUIT, CMD_RESTART, CMD_SHUTDOWN, CMD_DOCKBAR };
+enum { CMD_SETTINGS = 1, CMD_RESCAN, CMD_QUIT, CMD_RESTART, CMD_SHUTDOWN, CMD_DOCKBAR, CMD_ABOUT };
 #define CMD_KEY 0xffff0000u         /* row keys of commands; program ids are far below */
 #define WIN_KEY 0xfffe0000u         /* row keys of open windows */
 static const struct { unsigned id; const char *title, *subtitle; } commands[] = {
-    { CMD_SETTINGS, "Launcher Settings", "Folders, look, start with the system" },
+    { CMD_SETTINGS, "Launcher Settings", "Folders for programs and files, look, start with the system" },
+    { CMD_ABOUT, "About Launcher", "Version, what it knows, credits" },
     { CMD_RESCAN, "Rescan Programs and Files", "Look through the folders again" },
     { CMD_QUIT, "Quit Launcher", "Stop the launcher until it is started again" },
     { CMD_RESTART, "Restart Computer", "Asks once more before it restarts" },
@@ -1612,7 +1614,8 @@ static void run_selected(void)
         }
         note("command %u", id);
         close_panel("command");
-        if (id == CMD_SETTINGS) app.want_prefs = 1;
+        if (id == CMD_SETTINGS) { app.want_prefs = 1; app.prefs_page = 0; }
+        else if (id == CMD_ABOUT) { app.want_prefs = 1; app.prefs_page = 4; }
         else if (id == CMD_RESCAN) { ln_scan_again(app.scan); ln_scan_files(app.scan); }
         else if (id == CMD_QUIT) app.quit = 1;
         return;
@@ -1814,45 +1817,53 @@ static void scan_events(void)
 
 /* --- settings ------------------------------------------------------------ */
 
+/* The lists of the settings as one text, to tell whether they changed. */
+static char *lists_text(void)
+{
+    size_t n;
+    return ln_config_text(&app.cfg, &n);
+}
+
 static void open_settings(void)
 {
-    char **before;
-    int n = app.cfg.folders, i, same;
+    struct ln_about about;
+    char *before, *after;
+    char **old_folder;
+    int old_n = app.cfg.folders, i, changed;
     close_panel("settings");
-    if (!(before = calloc((size_t)n + 1, sizeof *before))) return;
-    for (i = 0; i < n; i++) before[i] = strdup(app.cfg.folder[i]);
+    if (!(old_folder = calloc((size_t)old_n + 1, sizeof *old_folder))) return;
+    for (i = 0; i < old_n; i++) old_folder[i] = strdup(app.cfg.folder[i]);
     app.cfg.autostart = ln_autostart_on();
-    if (ln_prefs_run(&app.cfg)) {
+    before = lists_text();
+    about.version = version + 6;
+    about.hotkey = app.hotkey;
+    about.programs = ln_index_count(app.index);
+    about.files = app.files ? ln_fileindex_count(app.files) : 0;
+    about.packages = app.pkgs.n;
+    about.rates_date = app.rates.date;
+    if (ln_prefs_run(&app.cfg, &about, app.prefs_page)) {
         save_config();
         if (app.cfg.autostart != ln_autostart_on()) {
             int ok = ln_autostart_set(app.cfg.autostart, app.program);
             note("autostart %d ok=%d", app.cfg.autostart, ok);
         }
-        same = n == app.cfg.folders;
-        for (i = 0; same && i < n; i++) same = before[i] && !strcmp(before[i], app.cfg.folder[i]);
-        if (!same) {
-            /* other folders: a new scanner; programs of folders no longer
-               searched leave the index */
-            if (app.rexxport) {
-        struct RexxMsg *m;
-        RemPort(app.rexxport);
-        while ((m = (struct RexxMsg *)GetMsg(app.rexxport))) { m->rm_Result1 = RC_FATAL; m->rm_Result2 = 0; ReplyMsg(&m->rm_Node); }
-        DeleteMsgPort(app.rexxport);
-    }
-    if (app.rexxreply) {
-        /* answers still on their way belong to messages we made: wait for them */
-        while (app.rexx_out > 0) { WaitPort(app.rexxreply); rexx_replies(); }
-        DeleteMsgPort(app.rexxreply);
-    }
-    if (app.scan) ln_scan_stop(app.scan);
-            for (i = 0; i < n; i++)
-                if (before[i]) { ln_index_begin(app.index, before[i]); ln_index_end(app.index, before[i]); }
+        after = lists_text();
+        changed = !before || !after || strcmp(before, after);
+        free(after);
+        if (changed) {
+            /* other folders or excludes: a new scanner; programs of folders
+               no longer searched leave the index, the file index is walked anew */
+            if (app.scan) ln_scan_stop(app.scan);
+            for (i = 0; i < old_n; i++)
+                if (old_folder[i]) { ln_index_begin(app.index, old_folder[i]); ln_index_end(app.index, old_folder[i]); }
+            if (!app.cfg.files_n && app.files) { ln_fileindex_free(app.files); app.files = NULL; }
             app.scan = ln_scan_start(app.scanport, app.cfg.folder, app.cfg.folders, app.cfg.files, app.cfg.files_n, app.cfg.exclude, app.cfg.exclude_n);
         }
-        note("settings saved folders=%d dark=%d compact=%d glass=%d", app.cfg.folders, app.cfg.dark, app.cfg.compact, app.cfg.glass);
+        note("settings saved folders=%d files=%d exclude=%d dark=%d compact=%d glass=%d", app.cfg.folders, app.cfg.files_n, app.cfg.exclude_n, app.cfg.dark, app.cfg.compact, app.cfg.glass);
     }
-    for (i = 0; i < n; i++) free(before[i]);
     free(before);
+    for (i = 0; i < old_n; i++) free(old_folder[i]);
+    free(old_folder);
 }
 
 /* --- the commodity ------------------------------------------------------- */
@@ -1901,6 +1912,7 @@ int main(int argc, char **argv)
     snprintf(app.dir, sizeof app.dir, "%s", settings);
     snprintf(app.config, sizeof app.config, "%s/config", app.dir);
     snprintf(app.counts, sizeof app.counts, "%s/counts", app.dir);
+    snprintf(app.hotkey, sizeof app.hotkey, "%s", key);
     note("start key='%s' settings='%s'", key, app.dir);
     if (zt_layer_open() != ZT_OK) { PutStr((CONST_STRPTR)"Launcher: the text layer could not start\n"); goto out; }
     text = 1;

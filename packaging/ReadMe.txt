@@ -102,15 +102,45 @@ it the launcher says so. Weather data by Open-Meteo (CC BY 4.0). The city
 you type is sent to that service, nothing else.
 
 
+Files
+
+Files and drawers of folders you choose are found by name, from three
+letters on, in a Files section; several words narrow the search ("report
+2026"). Return opens the file as a double click would; Tab offers Show in
+Drawer, Copy Path and Open Shell Here. No folder is searched until you add
+one in the settings (Files tab); there you can also leave folders out, and
+names by pattern (for example #?.bak). The index is built in the background
+and kept between starts; "Rescan Programs and Files" builds it again.
+
+
+ARexx
+
+The launcher has the port LAUNCHER with the commands SHOW [text], HIDE,
+TOGGLE, RESCAN, VERSION, QUIT and HELP. From a script:
+
+  address LAUNCHER 'SHOW calc'
+
+It can also send a command to another program: type "rx", a space, and
+choose one of the public ports listed (not every port understands ARexx),
+then the command:
+
+  rx LAUNCHER VERSION
+
+Return sends it; the answer appears under the row.
+
+
 Settings
 
-Type "settings" and press Return on "Launcher Settings": the folders that
-are searched, dark or light theme, compact rows, frosted glass, start with
-the system. "Rescan Programs" and "Quit Launcher" are found the same way.
+Type "settings" and press Return on "Launcher Settings". Tabs: Programs
+(folders searched for programs), Files (folders indexed for files, and
+what is left out), Look (dark or light theme, compact rows, frosted
+glass), General (start with the system) and About. "About Launcher" opens
+the same window on its last tab. "Quit Launcher" and "Restart Computer"
+are found the same way.
 
-It looks for programs in the chosen folders and in the drawers directly
-inside them: files with a tool icon, and scripts with an icon of their own
-(a project icon started through IconX). To begin with these are SYS:Tools,
+Programs are files with a tool icon, and scripts with an icon of their own
+(a project icon started through IconX), in the chosen folders and in the
+drawers directly inside them. To begin with these are SYS:Tools,
 SYS:Utilities, SYS:System, SYS:Prefs and SYS:Packages (where apkg
 installs).
 
