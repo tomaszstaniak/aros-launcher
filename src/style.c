@@ -1,12 +1,17 @@
 /* SPDX-License-Identifier: MIT */
 #include "style.h"
 
+/* The colours are Dockbar's, so that the two look alike beside each other:
+ * its popup fill, text, muted text, accent (its insertion mark), popup
+ * hover, separator and popup border, dark and light. Order: tint,
+ * tint_plain, text, dim, match, sel_fill, sel_text, sel_dim, sel_match,
+ * rule, edge. */
 #define DARK_COLOURS \
-    0xb81c1e24ul, 0xf21c1e24ul, 0xffeef0f4ul, 0x8ceef0f4ul, 0xff7fb4fful, \
-    0x21fffffful, 0xffeef0f4ul, 0x8ceef0f4ul, 0xff7fb4fful, 0x1afffffful, 0x1ffffffful
+    0xb830353aul, 0xf230353aul, 0xffedf3faul, 0xffaabbcdul, 0xff9bdbd4ul, \
+    0xff485159ul, 0xffedf3faul, 0xffaabbcdul, 0xff9bdbd4ul, 0x80555d63ul, 0x80767d82ul
 #define LIGHT_COLOURS \
-    0xc8f4f5f7ul, 0xf2f4f5f7ul, 0xff1d2330ul, 0x991d2330ul, 0xff1f5fc4ul, \
-    0xff3f7de0ul, 0xfffffffful, 0xd9fffffful, 0xfffffffful, 0x1a000000ul, 0x24000000ul
+    0xc8f2f4f6ul, 0xf2f2f4f6ul, 0xff1d2328ul, 0xff4d5964ul, 0xff1f7f73ul, \
+    0xffd3dae0ul, 0xff1d2328ul, 0xff4d5964ul, 0xff1f7f73ul, 0x80a8b0b7ul, 0x809aa3abul
 
 static const struct ln_style styles[4] = {
     /* dark, full */

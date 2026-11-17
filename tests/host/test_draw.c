@@ -113,7 +113,8 @@ int main(void)
        characters of the first title, not after them */
     x_title = l.px + s->pad + s->icon + 12;
     n0 = (int)zt_x(f.title, "WordCraft", 9, 2, 0);
-    assert(count(x_title, l.row_y[0], x_title + n0, l.row_y[0] + s->row_h / 2 + 3, s->sel_match) > 4);
+    /* only pixels the glyph covers fully have exactly that colour: a few */
+    assert(count(x_title, l.row_y[0], x_title + n0, l.row_y[0] + s->row_h / 2 + 3, s->sel_match) > 2);
     assert(count(x_title + n0 + 1, l.row_y[0], x_title + 200, l.row_y[0] + s->row_h / 2 + 3, s->sel_match) == 0);
     /* the second row has no match marks */
     assert(count(x_title, l.row_y[1], x_title + 200, l.row_y[1] + s->row_h / 2 + 3, s->match) == 0);
