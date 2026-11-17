@@ -17,13 +17,15 @@ else
   ZK_TC=$ln_tc ZK_SDK=$ln_sdk ZK_CC=$ln_cc ZK_CXX=$ln_tc/$ln_prefix-g++ ZK_AR=$ln_tc/$ln_prefix-ar ZK_NM=$ln_tc/$ln_prefix-nm \
     "$ZK/scripts/build-textlib.sh" "$ln_zk" "$ln_build"
 fi
+# Window composition is compiled in where the SDK has the compositor's window tags.
+if grep -a -q 'define WA_AlphaSurface' "$ln_sdk/include/intuition/intuition.h"; then present=$ZK/src/zk_present_compose.c; else present=$ZK/src/zk_present_none.c; fi
 # Binaries carry no build-machine paths.
 pmap="-ffile-prefix-map=$R=launcher -ffile-prefix-map=$ln_sdk=sdk -ffile-prefix-map=$ZK=zunekit"
 src=$(ls "$R"/src/*.c)
 # shellcheck disable=SC2086
 "$ln_cc" --sysroot="$ln_sdk" -std=gnu99 -O2 -Wall -Wextra -Werror -Wno-pointer-sign $pmap \
   -I"$R/src" -I"$ZK/src" -I"$ZK/third_party/utf8proc" -DUTF8PROC_STATIC -I"$ln_sdk/include/freetype" \
-  $src "$ZK/src/zk_edit_core.c" \
-  -o "$ln_build/Launcher" "$ln_build/libzktext.a" "$ln_sdk/lib/libfreetype2.static.a" "$ln_sdk/lib/libpng_nostdio.a" "$ln_sdk/lib/libz.static.a" -lm
+  $src "$ZK/src/zk_edit_core.c" "$ZK/src/zk_glass_core.c" "$ZK/src/zk_present.c" "$present" \
+  -o "$ln_build/Launcher" "$ln_build/libzktext.a" "$ln_sdk/lib/libfreetype2.static.a" "$ln_sdk/lib/libpng_nostdio.a" "$ln_sdk/lib/libz.static.a" -lcybergraphics -lm
 "$ln_tc/$ln_prefix-strip" --strip-debug "$ln_build/Launcher"
 echo "$ln_build/Launcher"

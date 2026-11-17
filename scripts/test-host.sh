@@ -23,12 +23,12 @@ pure=$(ls "$R"/src/*.c 2>/dev/null | grep -v -e '_aros\.c$' -e '/main\.c$' || tr
 for t in "$R"/tests/host/test_*.c; do
   n=$(basename "$t" .c)
   # shellcheck disable=SC2086
-  $CC $F -o "$B/$n" "$t" $pure "$ZK/src/zk_edit_core.c" "$ZK/src/zk_text.c" "$ZK/third_party/utf8proc/utf8proc.c" "$HB_O" $FT ${CXXLIB:--lc++} -lm
+  $CC $F -o "$B/$n" "$t" $pure "$ZK/src/zk_edit_core.c" "$ZK/src/zk_glass_core.c" "$ZK/src/zk_text.c" "$ZK/third_party/utf8proc/utf8proc.c" "$HB_O" $FT ${CXXLIB:--lc++} -lm
   (cd "$R/tests" && "$B/$n")
   echo "ok $n"
 done
 # Pictures of the panel to look at: build/host/looks/*.png
 mkdir -p "$B/looks"
 # shellcheck disable=SC2086
-$CC $F -o "$B/render_panel" "$R/tests/host/render_panel.c" $pure "$ZK/src/zk_edit_core.c" "$ZK/src/zk_text.c" "$ZK/third_party/utf8proc/utf8proc.c" "$HB_O" $FT ${CXXLIB:--lc++} -lm
+$CC $F -o "$B/render_panel" "$R/tests/host/render_panel.c" $pure "$ZK/src/zk_edit_core.c" "$ZK/src/zk_glass_core.c" "$ZK/src/zk_text.c" "$ZK/third_party/utf8proc/utf8proc.c" "$HB_O" $FT ${CXXLIB:--lc++} -lm
 "$B/render_panel" "$LN_TEST_FONT" "$B/looks"
