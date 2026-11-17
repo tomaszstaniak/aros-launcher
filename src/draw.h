@@ -25,7 +25,7 @@ struct ln_view {
 
 struct ln_fonts { zt_font *query, *title, *small; };
 
-/* The name of a source's section ("Programs", "Calculator"). */
+/* The name of a source's section ("Programs and commands", "Calculator"). */
 const char *ln_source_name(int source);
 
 /* Draws the whole picture into argb: l->w x l->h pixels, four bytes each

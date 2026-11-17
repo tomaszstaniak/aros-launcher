@@ -231,67 +231,64 @@ static char *drawer_of(const char *path)
     return shown;
 }
 
-/* Answers the current query from the index. */
-static void answer(void)
-{
-    struct panel *p = &app.p;
-    const struct ln_entry *e[QUERY_ROWS];
-    static struct ln_match m[QUERY_ROWS];
-    static struct ln_row row[QUERY_ROWS];
-    char *sub[QUERY_ROWS];
-    size_t qn;
-    const char *q = ze_text(p->doc, &qn);
-    int n = ln_index_query(app.index, q, qn, e, m, QUERY_ROWS), i;
-    memset(row, 0, sizeof row);
-    for (i = 0; i < n; i++) {
-        sub[i] = drawer_of(e[i]->path);
-        row[i].key = e[i]->id;
-        row[i].title = e[i]->title;
-        row[i].subtitle = sub[i];
-        row[i].kind = "Program";
-        row[i].m = m[i];
-        row[i].score = QUERY_ROWS - i;
-    }
-    ln_results_answer(p->res, ln_results_current(p->res), LN_SRC_PROGRAMS, row, n);
-    for (i = 0; i < n; i++) zt_free(sub[i]);
-}
-
 /* What the launcher itself can do, found by name like programs. */
 enum { CMD_SETTINGS = 1, CMD_RESCAN, CMD_QUIT };
+#define CMD_KEY 0xffff0000u         /* row keys of commands; program ids are far below */
 static const struct { unsigned id; const char *title, *subtitle; } commands[] = {
     { CMD_SETTINGS, "Launcher Settings", "Folders, look, start with the system" },
     { CMD_RESCAN, "Rescan Programs", "Look through the folders again" },
     { CMD_QUIT, "Quit Launcher", "Stop the launcher until it is started again" },
 };
 
-/* The calculator's row (first is 1) or the launcher's own commands for the
- * query. The calculator answers before the programs and the commands after
- * them: the selection starts on the first source that has a row, and that
- * should be the one at the top. */
-static void answer_others(int first)
+/* Answers the current query: the calculator's row, then one list of
+ * programs and the launcher's own commands, best match first. Commands
+ * and programs are ranked together, so that "quit" finds Quit Launcher
+ * before a program that merely has those letters. */
+static void answer(void)
 {
     struct panel *p = &app.p;
-    struct ln_row row[4];
-    size_t qn, i;
+    const struct ln_entry *e[QUERY_ROWS];
+    static struct ln_match m[QUERY_ROWS];
+    static struct ln_row row[QUERY_ROWS + 4];
+    char *sub[QUERY_ROWS];
+    size_t qn, c;
     const char *q = ze_text(p->doc, &qn);
     unsigned cur = ln_results_current(p->res);
-    int n = 0;
+    int n, i, total;
+
     memset(row, 0, sizeof row);
-    if (first) {
-        if (ln_calc(q, qn, app.calc, sizeof app.calc)) {
-            row[0].key = 1; row[0].title = app.calc; row[0].subtitle = q; row[0].kind = "Result"; row[0].score = 1;
-            n = 1;
-        }
-        ln_results_answer(p->res, cur, LN_SRC_CALC, row, n);
-        return;
+    total = 0;
+    if (ln_calc(q, qn, app.calc, sizeof app.calc)) {
+        row[0].key = 1; row[0].title = app.calc; row[0].subtitle = q; row[0].kind = "Result"; row[0].score = 1;
+        total = 1;
     }
-    for (i = 0; qn && i < sizeof commands / sizeof commands[0]; i++)
-        if (ln_match(q, qn, commands[i].title, strlen(commands[i].title), &row[n].m)) {
-            row[n].key = commands[i].id; row[n].title = commands[i].title; row[n].subtitle = commands[i].subtitle;
-            row[n].kind = "Command"; row[n].score = row[n].m.score;
-            n++;
+    ln_results_answer(p->res, cur, LN_SRC_CALC, row, total);
+
+    memset(row, 0, sizeof row);
+    n = ln_index_query(app.index, q, qn, e, m, QUERY_ROWS);
+    for (i = 0; i < n; i++) {
+        unsigned uses = e[i]->uses > 20 ? 20 : e[i]->uses;
+        sub[i] = drawer_of(e[i]->path);
+        row[i].key = e[i]->id;
+        row[i].title = e[i]->title;
+        row[i].subtitle = sub[i];
+        row[i].kind = "Program";
+        row[i].m = m[i];
+        /* the index's own order; with a query that is its rank */
+        row[i].score = qn ? m[i].score + (int)uses * 3 : QUERY_ROWS - i;
+    }
+    total = n;
+    for (c = 0; qn && c < sizeof commands / sizeof commands[0]; c++)
+        if (ln_match(q, qn, commands[c].title, strlen(commands[c].title), &row[total].m)) {
+            row[total].key = CMD_KEY | commands[c].id;
+            row[total].title = commands[c].title;
+            row[total].subtitle = commands[c].subtitle;
+            row[total].kind = "Command";
+            row[total].score = row[total].m.score;
+            total++;
         }
-    ln_results_answer(p->res, cur, LN_SRC_COMMANDS, row, n);
+    ln_results_answer(p->res, cur, LN_SRC_PROGRAMS, row, total);
+    for (i = 0; i < n; i++) zt_free(sub[i]);
 }
 
 /* --- icons --------------------------------------------------------------- */
@@ -299,7 +296,7 @@ static void answer_others(int first)
 static const unsigned char *row_icon(void *ctx, const struct ln_row *row, int size)
 {
     (void)ctx;
-    return row->source == LN_SRC_PROGRAMS ? ln_icons_get(app.icons, row->key, size) : NULL;
+    return row->source == LN_SRC_PROGRAMS && row->key < CMD_KEY ? ln_icons_get(app.icons, row->key, size) : NULL;
 }
 
 static const char *icon_path(void *ctx, unsigned id)
@@ -450,9 +447,7 @@ static int open_panel(const char *footer)
     p->first = 0;
     p->caret_on = 1; p->ticks = 0; p->click_row = -1;
     snprintf(p->footer, sizeof p->footer, "%s", footer ? footer : "");
-    answer_others(1);
     answer();
-    answer_others(0);
     paint(p);
     if (p->pinned) p->region = zk_present_region(p->pic, p->w, p->h);
     {
@@ -490,9 +485,7 @@ static void query_changed(void)
     ln_results_query(p->res);
     p->first = 0;
     p->footer[0] = 0;
-    answer_others(1);
     answer();
-    answer_others(0);
     note("query '%s' rows=%d", q, ln_results_count(p->res));
 }
 
@@ -513,8 +506,8 @@ static void run_selected(void)
         close_panel("copied");
         return;
     }
-    if (row->source == LN_SRC_COMMANDS) {
-        unsigned id = row->key;
+    if (row->source == LN_SRC_PROGRAMS && row->key >= CMD_KEY) {
+        unsigned id = row->key & 0xffff;
         note("command %u", id);
         close_panel("command");
         if (id == CMD_SETTINGS) app.want_prefs = 1;

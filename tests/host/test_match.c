@@ -51,6 +51,15 @@ int main(void)
     assert(go("edit", "Editor of long descriptive names", &b));
     assert(a.score > b.score);
 
+    /* a command named by its first word beats a program that only has the
+       letters; a program named from its start beats a command's second word */
+    assert(go("quit", "Quit Launcher", &a));
+    assert(go("quit", "QuickPart", &b));
+    assert(a.score > b.score);
+    assert(go("se", "Serial", &a));
+    assert(go("se", "Launcher Settings", &b));
+    assert(a.score > b.score);
+
     /* limits: long title, long query */
     memset(longt, 'a', sizeof longt - 1); longt[sizeof longt - 1] = 0;
     memset(longq, 'a', sizeof longq - 1); longq[sizeof longq - 1] = 0;

@@ -149,7 +149,7 @@ const char *ln_source_name(int source)
 {
     switch (source) {
     case LN_SRC_CALC: return "Calculator";
-    case LN_SRC_PROGRAMS: return "Programs";
+    case LN_SRC_PROGRAMS: return "Programs and commands";
     case LN_SRC_COMMANDS: return "Launcher";
     default: return "";
     }
