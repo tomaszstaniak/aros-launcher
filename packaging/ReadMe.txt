@@ -59,7 +59,8 @@ own:   > list sys:
 Packages
 
 If apkg is installed (C:apkg or the arospkg package), packages of its
-catalogue that are not installed yet are found by name. Return asks once,
+catalogue that are not installed yet are found by name or by a word of
+their description. Return asks once,
 a second Return installs the package in a console window.
 
 

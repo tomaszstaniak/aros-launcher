@@ -401,14 +401,22 @@ static void answer(void)
        found as programs */
     memset(row, 0, sizeof row);
     total = 0;
+    /* by name (letters in order, as for programs) or, from three letters
+       on, by words of the description; a name match comes first */
     for (i = 0; qn >= 2 && i < app.pkgs.n && total < 5; i++) {
         const struct ln_pkg *g = &app.pkgs.v[i];
-        if (g->installed || !ln_match(q, qn, g->id, strlen(g->id), &row[total].m)) continue;
+        int by_name, by_text = 0;
+        if (g->installed) continue;
+        by_name = ln_match(q, qn, g->id, strlen(g->id), &row[total].m);
+        if (!by_name && qn >= 3 && g->summary)
+            by_text = zt_contains_folded(g->summary, strlen(g->summary), q, qn) == 1;
+        if (!by_name && !by_text) continue;
+        if (!by_name) memset(&row[total].m, 0, sizeof row[total].m);
         row[total].key = (unsigned)i;
         row[total].title = g->id;
         row[total].subtitle = g->summary ? g->summary : "";
         row[total].kind = g->version ? g->version : "Package";
-        row[total].score = row[total].m.score;
+        row[total].score = by_name ? 1000 + row[total].m.score : 0;
         total++;
     }
     ln_results_answer(p->res, cur, LN_SRC_PACKAGES, row, total);
