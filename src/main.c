@@ -526,6 +526,7 @@ static int open_panel(const char *footer)
 {
     struct panel *p = &app.p;
     struct Screen *scr;
+    struct Window *helper = NULL;
     int compose, left, top, y;
     if (p->win) return 1;
     p->style = ln_style_get(app.cfg.dark, app.cfg.compact);
@@ -549,6 +550,25 @@ static int open_panel(const char *footer)
     p->pic = malloc((size_t)p->w * (size_t)p->h * 4);
     p->under = malloc((size_t)p->w * (size_t)p->h * 4);
     p->glass = NULL;
+    if (!compose && p->pic && p->under) {
+        /* Without composition the panel is laid over a picture of the
+           screen. The window that is active now will be drawn inactive as
+           soon as the panel takes the focus, so its picture must be taken
+           after that: a one-pixel window takes the focus first, and the
+           picture is taken once the screen has stopped changing. */
+        struct Window *first = OpenWindowTags(NULL, WA_PubScreen, (IPTR)scr, WA_Left, left + p->w / 2, WA_Top, top + p->shadow + 4,
+                                              WA_Width, 1, WA_Height, 1, WA_Borderless, TRUE, WA_Activate, TRUE,
+                                              WA_RMBTrap, TRUE, TAG_DONE);
+        int tries, ok = zk_glass_capture(scr, left, top, p->w, p->h, p->pic);
+        for (tries = 0; first && ok && tries < 8; tries++) {
+            Delay(1);
+            if (!zk_glass_capture(scr, left, top, p->w, p->h, p->under)) { ok = 0; break; }
+            if (tries >= 1 && !memcmp(p->pic, p->under, (size_t)p->w * (size_t)p->h * 4)) break;
+            memcpy(p->pic, p->under, (size_t)p->w * (size_t)p->h * 4);
+        }
+        helper = first;
+        note("settle tries=%d", tries);
+    }
     p->captured = p->pic && p->under && zk_glass_capture(scr, left, top, p->w, p->h, p->under);
     p->pinned = 0;
     if (!p->pic || !p->under) goto fail;
@@ -592,6 +612,7 @@ static int open_panel(const char *footer)
         p->win = zk_present_open(compose, tags);
     }
     if (!p->win) goto fail;
+    if (helper) { CloseWindow(helper); helper = NULL; }
     p->composed = zk_present_composed(p->win);
     UnlockPubScreen(NULL, scr);
     zk_present_put(p->win, p->pic, p->w, p->h, (!p->composed && p->captured) ? p->under : NULL);
@@ -599,6 +620,7 @@ static int open_panel(const char *footer)
          p->composed, p->captured, p->glass != NULL, p->w, p->h, ln_results_count(p->res), ln_index_count(app.index));
     return 1;
 fail:
+    if (helper) CloseWindow(helper);
     UnlockPubScreen(NULL, scr);
     if (p->region) { DisposeRegion(p->region); p->region = NULL; }
     free(p->pic); free(p->under); free(p->glass);
