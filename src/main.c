@@ -40,6 +40,7 @@
 #include "index.h"
 #include "keys_aros.h"
 #include "layout.h"
+#include "pkglist.h"
 #include "prefs_aros.h"
 #include "queryline.h"
 #include "results.h"
@@ -92,6 +93,10 @@ static struct {
     char calc[64];          /* the calculator's result on show */
     int quit, want_prefs;
     unsigned confirm;       /* a command waiting for a second Return */
+    struct ln_pkglist pkgs; /* apkg's catalogue */
+    char apkg[64];          /* apkg's path, "" when there is none */
+    int confirm_pkg;        /* a package waiting for a second Return, -1 none */
+    int pkgs_stale;         /* an install was started: ask for the list again */
 } app;
 
 /* --- small things -------------------------------------------------------- */
@@ -346,6 +351,7 @@ static void answer(void)
         ln_results_answer(p->res, cur, LN_SRC_SHELL, row, total);
         ln_results_answer(p->res, cur, LN_SRC_CALC, row, 0);
         ln_results_answer(p->res, cur, LN_SRC_PROGRAMS, row, 0);
+        ln_results_answer(p->res, cur, LN_SRC_PACKAGES, row, 0);
         return;
     }
     ln_results_answer(p->res, cur, LN_SRC_SHELL, row, 0);
@@ -390,6 +396,22 @@ static void answer(void)
         }
     ln_results_answer(p->res, cur, LN_SRC_PROGRAMS, row, total);
     for (i = 0; i < n; i++) zt_free(sub[i]);
+
+    /* packages that are not installed, by their name; installed ones are
+       found as programs */
+    memset(row, 0, sizeof row);
+    total = 0;
+    for (i = 0; qn >= 2 && i < app.pkgs.n && total < 5; i++) {
+        const struct ln_pkg *g = &app.pkgs.v[i];
+        if (g->installed || !ln_match(q, qn, g->id, strlen(g->id), &row[total].m)) continue;
+        row[total].key = (unsigned)i;
+        row[total].title = g->id;
+        row[total].subtitle = g->summary ? g->summary : "";
+        row[total].kind = g->version ? g->version : "Package";
+        row[total].score = row[total].m.score;
+        total++;
+    }
+    ln_results_answer(p->res, cur, LN_SRC_PACKAGES, row, total);
 }
 
 /* --- icons --------------------------------------------------------------- */
@@ -508,6 +530,8 @@ static int open_panel(const char *footer)
     if (!open_fonts(p)) { note("open failed: fonts"); return 0; }
     snapshot_windows();
     app.confirm = 0;
+    app.confirm_pkg = -1;
+    if (app.pkgs_stale) { app.pkgs_stale = 0; ln_scan_packages(app.scan); }
     if (!(scr = pick_screen())) { note("open failed: no screen"); return 0; }
 
     compose = zk_present_can_compose(scr);
@@ -610,6 +634,30 @@ static void run_selected(void)
         close_panel("copied");
         return;
     }
+    if (row->source == LN_SRC_PACKAGES) {
+        int i = (int)row->key;
+        char cmd[200], title[160];
+        BPTR con;
+        LONG rc = -1;
+        if (i < 0 || i >= app.pkgs.n || !app.apkg[0]) return;
+        if (app.confirm_pkg != i) {
+            app.confirm_pkg = i;
+            snprintf(p->footer, sizeof p->footer, "Return again to install %s", app.pkgs.v[i].id);
+            show(p);
+            return;
+        }
+        /* in a console of its own, so that the download and its outcome are seen */
+        snprintf(cmd, sizeof cmd, "%s install %s --yes", app.apkg, app.pkgs.v[i].id);
+        snprintf(title, sizeof title, "CON:40/60/640/240/Installing %s/AUTO/CLOSE/WAIT", app.pkgs.v[i].id);
+        if ((con = Open((CONST_STRPTR)title, MODE_OLDFILE))) {
+            rc = SystemTags((CONST_STRPTR)cmd, SYS_Asynch, TRUE, SYS_Input, (IPTR)con, SYS_Output, (IPTR)NULL, TAG_DONE);
+            if (rc == -1) Close(con);
+        }
+        note("install '%s' started=%d", app.pkgs.v[i].id, rc != -1);
+        app.pkgs_stale = 1;
+        close_panel("install");
+        return;
+    }
     if (row->source == LN_SRC_SHELL) {
         size_t k = 0;
         char *cmd = zt_local_copy(row->title, strlen(row->title), &k);
@@ -687,7 +735,7 @@ static void panel_key(const struct IntuiMessage *im)
     struct ln_key_out o;
     if (!ln_keys_translate(im, &key, &mods, utf8, sizeof utf8, &n)) return;
     p->caret_on = 1; p->ticks = 0;
-    if (app.confirm && key != LN_K_RETURN) { app.confirm = 0; p->footer[0] = 0; }
+    if ((app.confirm || app.confirm_pkg >= 0) && key != LN_K_RETURN) { app.confirm = 0; app.confirm_pkg = -1; p->footer[0] = 0; }
     switch (ln_queryline_key(p->doc, key, mods, utf8, n, &o)) {
     case LN_ACT_NONE: return;
     case LN_ACT_CARET: break;
@@ -760,6 +808,22 @@ static void scan_events(void)
             app.index_changed = 1;
             note("scanned '%s' programs=%d", m->path, ln_index_count(app.index));
             break;
+        case LN_SCAN_PACKAGES: {
+            size_t n;
+            char *text = read_file(LN_PACKAGES_FILE, &n);
+            struct ln_pkglist fresh;
+            memset(&fresh, 0, sizeof fresh);
+            if (text && ln_pkglist_parse(&fresh, text, n)) {
+                ln_pkglist_free(&app.pkgs);
+                app.pkgs = fresh;
+                snprintf(app.apkg, sizeof app.apkg, "%s", m->path);
+                app.index_changed = 1;
+            }
+            note("packages %d (apkg '%s')", app.pkgs.n, app.apkg);
+            free(text);
+            DeleteFile((CONST_STRPTR)LN_PACKAGES_FILE);
+            break;
+        }
         case LN_SCAN_PUT: {
             char *title = zt_path_from_dos(m->title);
             if (title) { ln_index_put(app.index, m->path, title); zt_free(title); puts++; }
@@ -940,6 +1004,7 @@ out:
     close_fonts(&app.p);
     if (app.p.doc) ze_free(app.p.doc);
     if (app.p.res) ln_results_free(app.p.res);
+    ln_pkglist_free(&app.pkgs);
     if (app.icons) ln_icons_free(app.icons);
     if (app.index) ln_index_free(app.index);
     ln_config_free(&app.cfg);

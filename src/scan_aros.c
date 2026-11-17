@@ -113,6 +113,27 @@ static void scan_folder(struct ln_scan *s, int i)
     if (!stopping()) send(s, LN_SCAN_END, s->folder[i], NULL);
 }
 
+/* The package catalogue: apkg prints it, the main task reads the file.
+ * apkg is looked for where its package and its manual install put it. */
+static void packages(struct ln_scan *s)
+{
+    static const char *const places[] = { "C:apkg", "SYS:Packages/arospkg/apkg" };
+    char cmd[160];
+    ULONG i, k, n;
+    for (i = 0; i < 2; i++) {
+        BPTR lock = Lock((CONST_STRPTR)places[i], SHARED_LOCK);
+        if (!lock) continue;
+        UnLock(lock);
+        n = len(places[i]);
+        CopyMem((APTR)places[i], cmd, n);
+        k = len(" search --json >" LN_PACKAGES_FILE) + 1;
+        CopyMem((APTR)" search --json >" LN_PACKAGES_FILE, cmd + n, k);
+        if (SystemTags((CONST_STRPTR)cmd, SYS_Input, (IPTR)NULL, SYS_Output, (IPTR)NULL, TAG_DONE) != -1)
+            send(s, LN_SCAN_PACKAGES, places[i], NULL);
+        return;
+    }
+}
+
 static void entry(void)
 {
     struct Process *me = (struct Process *)FindTask(NULL);
@@ -132,14 +153,16 @@ static void entry(void)
             if (!StartNotify(nr)) nr->nr_Name = NULL;       /* not watched */
         }
     for (i = 0; i < s->n && !stopping(); i++) scan_folder(s, i);
+    if (!stopping()) packages(s);
 
     while (running) {
-        ULONG got = Wait(portsig | SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F);
+        ULONG got = Wait(portsig | SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_E | SIGBREAKF_CTRL_F);
         struct NotifyMessage *nm;
         int any = 0;
         if (got & SIGBREAKF_CTRL_C) break;
         if (got & SIGBREAKF_CTRL_F)
             for (i = 0; i < s->n; i++) s->dirty[i] = any = 1;
+        if (got & (SIGBREAKF_CTRL_E | SIGBREAKF_CTRL_F)) packages(s);
         if (port) {
             /* a copy into a folder sends many notes: wait for them to stop */
             do {
@@ -209,6 +232,11 @@ struct ln_scan *ln_scan_start(struct MsgPort *to, char *const *folders, int n)
 void ln_scan_again(struct ln_scan *s)
 {
     if (s && s->proc) Signal(&s->proc->pr_Task, SIGBREAKF_CTRL_F);
+}
+
+void ln_scan_packages(struct ln_scan *s)
+{
+    if (s && s->proc) Signal(&s->proc->pr_Task, SIGBREAKF_CTRL_E);
 }
 
 void ln_scan_stop(struct ln_scan *s)
