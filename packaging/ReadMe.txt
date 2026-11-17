@@ -37,8 +37,9 @@ Programs you start often move up the list.
 
 What it looks for
 
-Files with a tool icon in SYS:Tools, SYS:Utilities, SYS:System and
-SYS:Prefs, and in the drawers directly inside them.
+Files with a tool icon in SYS:Tools, SYS:Utilities, SYS:System,
+SYS:Prefs and SYS:Packages (where apkg installs), and in the drawers
+directly inside them.
 
 To use other drawers, create the text file ENVARC:Launcher/config with one
 line per drawer and start Launcher again:

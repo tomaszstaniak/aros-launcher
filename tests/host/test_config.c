@@ -21,13 +21,14 @@ int main(void)
         "theme=purple\n";               /* not understood: kept */
 
     assert(ln_config_defaults(&c));
-    assert(c.folders == 4 && c.dark && !c.compact && c.glass);
+    assert(c.folders == 5 && c.dark && !c.compact && c.glass);
+    assert(!strcmp(c.folder[4], "SYS:Packages"));
     assert(!strcmp(c.folder[0], "SYS:Tools"));
     t = ln_config_text(&c, &n);
     assert(t && n == strlen(t));
     memset(&d, 0, sizeof d);
     assert(ln_config_parse(&d, t, n));
-    assert(d.folders == 4 && d.dark && d.glass && !d.compact && !d.other);
+    assert(d.folders == 5 && d.dark && d.glass && !d.compact && !d.other);
     free(t); ln_config_free(&d); ln_config_free(&c);
 
     memset(&c, 0, sizeof c);

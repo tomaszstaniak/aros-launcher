@@ -57,7 +57,7 @@ void ln_config_free(struct ln_config *c)
 
 int ln_config_defaults(struct ln_config *c)
 {
-    static const char *const first[] = { "SYS:Tools", "SYS:Utilities", "SYS:System", "SYS:Prefs" };
+    static const char *const first[] = { "SYS:Tools", "SYS:Utilities", "SYS:System", "SYS:Prefs", "SYS:Packages" };
     size_t i;
     memset(c, 0, sizeof *c);
     c->dark = 1;

@@ -22,7 +22,8 @@ struct ln_config {
     char *other;        /* lines kept as they were, each ending in a line feed */
 };
 
-/* The settings a first start has: the system's program drawers, dark,
+/* The settings a first start has: the system's program drawers and the
+ * drawer apkg installs packages into (SYS:Packages), dark,
  * full rows, frosted glass. 0 when out of memory. */
 int ln_config_defaults(struct ln_config *c);
 /* Reads text into c (which must be zeroed or freed first). A file without
