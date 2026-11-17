@@ -31,9 +31,12 @@ cp -R "$ln_build/Widgets/org.aros.currency" "$work/Launcher/Widgets/"
 cp "$R/packaging/Launcher.info" "$work/Launcher/Launcher.info"
 cp "$R/packaging/drawer.info" "$work/Launcher.info"
 sed -e "s/@LABEL@/$label/" -e "s/@TARGET@/$arch/" -e "s|@REQUIRES@|$requires|" "$R/packaging/ReadMe.txt" > "$work/Launcher/ReadMe.txt"
-# Nothing in the package names the machine it was built on.
-if grep -r -a -l -E "/Users/|/Volumes/|/home/|/private/" "$work" ; then
-  echo "host paths in the package (files above)" >&2; exit 1
+# Nothing in the package names the machine it was built on. /home/vsts is
+# the AROS project's own build service, whose paths are inside the contrib
+# curl and OpenSSL of the official Pi SDK.
+found=$(LC_ALL=C grep -r -a -o -h -E "(/Users/|/Volumes/|/private/|/home/)[A-Za-z0-9_.-]*" "$work" | grep -v -x "/home/vsts" | sort -u || true)
+if [ -n "$found" ]; then
+  echo "host paths in the package:" $found >&2; exit 1
 fi
 export TZ=UTC
 find "$work" -exec touch -t 202611170000 {} +

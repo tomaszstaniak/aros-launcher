@@ -38,8 +38,12 @@ day.
 The network has to be running. Only the bank's public file is asked for.
 Licence texts of what the provider contains are in the licenses drawer.
 TXT
-if grep -r -a -l -E "/Users/|/Volumes/|/home/|/private/" "$work" ; then
-  echo "host paths in the package (files above)" >&2; exit 1
+# Nothing in the package names the machine it was built on. /home/vsts is
+# the AROS project's own build service, whose paths are inside the contrib
+# curl and OpenSSL of the official Pi SDK.
+found=$(LC_ALL=C grep -r -a -o -h -E "(/Users/|/Volumes/|/private/|/home/)[A-Za-z0-9_.-]*" "$work" | grep -v -x "/home/vsts" | sort -u || true)
+if [ -n "$found" ]; then
+  echo "host paths in the package:" $found >&2; exit 1
 fi
 export TZ=UTC
 find "$work" -exec touch -t 202611170000 {} +
