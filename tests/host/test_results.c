@@ -20,7 +20,7 @@ int main(void)
     struct ln_results *r = ln_results_new();
     struct ln_row a[4], b[4];
     unsigned q1, q2;
-    enum { OTHER = 2, EARLY = 0 + 1 };
+    enum { OTHER = 5, EARLY = 0 + 1 };
     (void)EARLY;
 
     assert(ln_results_selected(r) == -1 && ln_results_count(r) == 0);

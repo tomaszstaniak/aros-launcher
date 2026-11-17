@@ -24,7 +24,7 @@ void ln_layout_make(struct ln_layout *l, const struct ln_style *s, const struct 
         l->shown = 0;
         l->headings = 0;
         l->empty_y = -1;
-        last_source = -1;
+        last_source = -1000;      /* no source has this number */
         used = 0;
         y = l->list_y + s->inset;
         for (i = first; i < n && l->shown < LN_ROWS_MAX; i++) {

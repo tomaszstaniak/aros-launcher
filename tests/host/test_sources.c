@@ -53,10 +53,10 @@ int main(void)
         assert(ln_results_answer(r, q, LN_SRC_CALC, w, 0));
         w[0] = row(1, "Launcher Settings", "Folders, look, start with the system", "Command", 50);
         w[0].m.n = 4; w[0].m.pos[0] = 9; w[0].m.pos[1] = 10; w[0].m.pos[2] = 11; w[0].m.pos[3] = 12;
-        assert(ln_results_answer(r, q, LN_SRC_COMMANDS, w, 1));
+        assert(ln_results_answer(r, q, LN_SRC_PACKAGES, w, 1));
         assert(ln_results_answer(r, q, LN_SRC_PROGRAMS, w, 0));
         assert(ln_results_count(r) == 1 && ln_results_selected(r) == 0);
-        assert(ln_results_row(r, 0)->source == LN_SRC_COMMANDS);
+        assert(ln_results_row(r, 0)->source == LN_SRC_PACKAGES);
         draw(s, r, &f, "sett");
 
         /* a calculation above programs and a command */
@@ -66,7 +66,7 @@ int main(void)
         assert(ln_results_answer(r, q, LN_SRC_CALC, w, 1));
         for (i = 0; i < 8; i++) w[i] = row((unsigned)i + 10, "Program", "SYS:Tools", "Program", 100 - i);
         assert(ln_results_answer(r, q, LN_SRC_PROGRAMS, w, 8));
-        assert(ln_results_answer(r, q, LN_SRC_COMMANDS, w, 0));
+        assert(ln_results_answer(r, q, LN_SRC_PACKAGES, w, 0));
         assert(ln_results_count(r) == 9 && ln_results_row(r, 0)->source == LN_SRC_CALC);
         assert(ln_results_selected(r) == 0);        /* the calculator's row stays chosen */
         draw(s, r, &f, "2+2");
@@ -81,7 +81,7 @@ int main(void)
 
         /* all three sections at once */
         w[0] = row(3, "Quit Launcher", "Stop the launcher until it is started again", "Command", 5);
-        assert(ln_results_answer(r, q, LN_SRC_COMMANDS, w, 1));
+        assert(ln_results_answer(r, q, LN_SRC_PACKAGES, w, 1));
         assert(ln_results_count(r) == 10);
         draw(s, r, &f, "2+2");
 
@@ -92,7 +92,7 @@ int main(void)
         for (i = 0; i < 3; i++) w[i] = row((unsigned)i + 10, "Serial", "SYS:Prefs", "Program", 100 - i);
         assert(ln_results_answer(r, q, LN_SRC_PROGRAMS, w, 3));
         w[0] = row(1, "Launcher Settings", "Folders", "Command", 5);
-        assert(ln_results_answer(r, q, LN_SRC_COMMANDS, w, 1));
+        assert(ln_results_answer(r, q, LN_SRC_PACKAGES, w, 1));
         assert(ln_results_selected(r) == 0 && ln_results_row(r, 0)->source == LN_SRC_PROGRAMS);
 
         zt_font_close(f.query); zt_font_close(f.title); zt_font_close(f.small);

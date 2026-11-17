@@ -18,6 +18,8 @@
 #include <clib/alib_protos.h>
 #include <dos/dos.h>
 #include <dos/dosextens.h>
+#include <dos/dostags.h>
+#include <exec/pm.h>
 #include <exec/types.h>
 #include <intuition/intuition.h>
 #include <intuition/intuitionbase.h>
@@ -87,6 +89,7 @@ static struct {
     char program[512];      /* this program's full path, "" when unknown */
     char calc[64];          /* the calculator's result on show */
     int quit, want_prefs;
+    unsigned confirm;       /* a command waiting for a second Return */
 } app;
 
 /* --- small things -------------------------------------------------------- */
@@ -232,13 +235,85 @@ static char *drawer_of(const char *path)
 }
 
 /* What the launcher itself can do, found by name like programs. */
-enum { CMD_SETTINGS = 1, CMD_RESCAN, CMD_QUIT };
+enum { CMD_SETTINGS = 1, CMD_RESCAN, CMD_QUIT, CMD_RESTART, CMD_SHUTDOWN };
 #define CMD_KEY 0xffff0000u         /* row keys of commands; program ids are far below */
+#define WIN_KEY 0xfffe0000u         /* row keys of open windows */
 static const struct { unsigned id; const char *title, *subtitle; } commands[] = {
     { CMD_SETTINGS, "Launcher Settings", "Folders, look, start with the system" },
     { CMD_RESCAN, "Rescan Programs", "Look through the folders again" },
     { CMD_QUIT, "Quit Launcher", "Stop the launcher until it is started again" },
+    { CMD_RESTART, "Restart Computer", "Asks once more before it restarts" },
+    { CMD_SHUTDOWN, "Shut Down Computer", "Asks once more before it switches off" },
 };
+
+/* The windows that were open when the panel was called: what is shown
+ * (copied under Intuition's lock) and the pointers as tokens. A token is
+ * used only after it was found again in Intuition's lists. */
+#define WIN_MAX 64
+static struct {
+    struct Window *w;
+    struct Screen *s;
+    char raw[128];          /* the title as Intuition has it, to recognise the window again */
+    char title[400];        /* the same as UTF-8 */
+    char where[160];        /* its screen, as UTF-8 */
+} wins[WIN_MAX];
+static int win_count;
+
+static void copy_shown(char *out, size_t cap, const char *local)
+{
+    char *u = zt_path_from_dos(local);
+    snprintf(out, cap, "%s", u ? u : "");
+    if (u) zt_free(u);
+}
+
+static void snapshot_windows(void)
+{
+    static char screens[WIN_MAX][64];
+    struct Screen *sc;
+    struct Window *w;
+    ULONG lock;
+    int i;
+    win_count = 0;
+    lock = LockIBase(0);
+    for (sc = IntuitionBase->FirstScreen; sc; sc = sc->NextScreen)
+        for (w = sc->FirstWindow; w && win_count < WIN_MAX; w = w->NextWindow) {
+            const char *st = (const char *)(sc->DefaultTitle ? sc->DefaultTitle : sc->Title);
+            if (!w->Title || !*w->Title || (w->Flags & WFLG_BACKDROP)) continue;
+            wins[win_count].w = w;
+            wins[win_count].s = sc;
+            strncpy(wins[win_count].raw, (const char *)w->Title, sizeof wins[0].raw - 1);
+            wins[win_count].raw[sizeof wins[0].raw - 1] = 0;
+            strncpy(screens[win_count], st ? st : "", sizeof screens[0] - 1);
+            screens[win_count][sizeof screens[0] - 1] = 0;
+            win_count++;
+        }
+    UnlockIBase(lock);
+    for (i = 0; i < win_count; i++) {
+        copy_shown(wins[i].title, sizeof wins[i].title, wins[i].raw);
+        copy_shown(wins[i].where, sizeof wins[i].where, screens[i]);
+    }
+}
+
+/* Brings a window of the snapshot to the front if it is still there. */
+static int show_window(int i)
+{
+    struct Screen *sc;
+    struct Window *w;
+    ULONG lock;
+    int found = 0;
+    if (i < 0 || i >= win_count) return 0;
+    lock = LockIBase(0);
+    for (sc = IntuitionBase->FirstScreen; sc && !found; sc = sc->NextScreen)
+        if (sc == wins[i].s)
+            for (w = sc->FirstWindow; w; w = w->NextWindow)
+                if (w == wins[i].w && w->Title && !strncmp((const char *)w->Title, wins[i].raw, sizeof wins[0].raw - 1)) { found = 1; break; }
+    UnlockIBase(lock);
+    if (!found) return 0;
+    ScreenToFront(wins[i].s);
+    WindowToFront(wins[i].w);
+    ActivateWindow(wins[i].w);
+    return 1;
+}
 
 /* Answers the current query: the calculator's row, then one list of
  * programs and the launcher's own commands, best match first. Commands
@@ -249,15 +324,30 @@ static void answer(void)
     struct panel *p = &app.p;
     const struct ln_entry *e[QUERY_ROWS];
     static struct ln_match m[QUERY_ROWS];
-    static struct ln_row row[QUERY_ROWS + 4];
+    static struct ln_row row[QUERY_ROWS + WIN_MAX + 8];
     char *sub[QUERY_ROWS];
     size_t qn, c;
     const char *q = ze_text(p->doc, &qn);
     unsigned cur = ln_results_current(p->res);
     int n, i, total;
 
+    /* "> command": only the Shell's row */
     memset(row, 0, sizeof row);
     total = 0;
+    if (qn && q[0] == '>') {
+        const char *cmd = q + 1;
+        while (*cmd == ' ') cmd++;
+        if (*cmd) {
+            row[0].key = 1; row[0].title = cmd; row[0].subtitle = "Run as a Shell command"; row[0].kind = "Shell"; row[0].score = 1;
+            total = 1;
+        }
+        ln_results_answer(p->res, cur, LN_SRC_SHELL, row, total);
+        ln_results_answer(p->res, cur, LN_SRC_CALC, row, 0);
+        ln_results_answer(p->res, cur, LN_SRC_PROGRAMS, row, 0);
+        return;
+    }
+    ln_results_answer(p->res, cur, LN_SRC_SHELL, row, 0);
+
     if (ln_calc(q, qn, app.calc, sizeof app.calc)) {
         row[0].key = 1; row[0].title = app.calc; row[0].subtitle = q; row[0].kind = "Result"; row[0].score = 1;
         total = 1;
@@ -287,6 +377,15 @@ static void answer(void)
             row[total].score = row[total].m.score;
             total++;
         }
+    for (i = 0; qn && i < win_count; i++)
+        if (ln_match(q, qn, wins[i].title, strlen(wins[i].title), &row[total].m)) {
+            row[total].key = WIN_KEY | (unsigned)i;
+            row[total].title = wins[i].title;
+            row[total].subtitle = wins[i].where;
+            row[total].kind = "Window";
+            row[total].score = row[total].m.score - 5;       /* a program of the same name comes first */
+            total++;
+        }
     ln_results_answer(p->res, cur, LN_SRC_PROGRAMS, row, total);
     for (i = 0; i < n; i++) zt_free(sub[i]);
 }
@@ -296,7 +395,7 @@ static void answer(void)
 static const unsigned char *row_icon(void *ctx, const struct ln_row *row, int size)
 {
     (void)ctx;
-    return row->source == LN_SRC_PROGRAMS && row->key < CMD_KEY ? ln_icons_get(app.icons, row->key, size) : NULL;
+    return row->source == LN_SRC_PROGRAMS && row->key < WIN_KEY ? ln_icons_get(app.icons, row->key, size) : NULL;
 }
 
 static const char *icon_path(void *ctx, unsigned id)
@@ -404,6 +503,8 @@ static int open_panel(const char *footer)
     if (p->win) return 1;
     p->style = ln_style_get(app.cfg.dark, app.cfg.compact);
     if (!open_fonts(p)) { note("open failed: fonts"); return 0; }
+    snapshot_windows();
+    app.confirm = 0;
     if (!(scr = pick_screen())) { note("open failed: no screen"); return 0; }
 
     compose = zk_present_can_compose(scr);
@@ -506,13 +607,48 @@ static void run_selected(void)
         close_panel("copied");
         return;
     }
+    if (row->source == LN_SRC_SHELL) {
+        size_t k = 0;
+        char *cmd = zt_local_copy(row->title, strlen(row->title), &k);
+        BPTR con = cmd ? Open((CONST_STRPTR)"CON:40/60/640/240/Launcher/AUTO/CLOSE/WAIT", MODE_OLDFILE) : 0;
+        LONG rc = -1;
+        if (con) {
+            /* started and left to run: the console is the command's and closes with it */
+            rc = SystemTags((CONST_STRPTR)cmd, SYS_Asynch, TRUE, SYS_Input, (IPTR)con, SYS_Output, (IPTR)NULL, TAG_DONE);
+            if (rc == -1) Close(con);
+        }
+        note("shell '%s' started=%d", row->title, rc != -1);
+        if (cmd) zt_free(cmd);
+        close_panel("shell");
+        return;
+    }
     if (row->source == LN_SRC_PROGRAMS && row->key >= CMD_KEY) {
         unsigned id = row->key & 0xffff;
+        if (id == CMD_RESTART || id == CMD_SHUTDOWN) {
+            if (app.confirm != id) {
+                app.confirm = id;
+                snprintf(p->footer, sizeof p->footer, "Return again to %s the computer",
+                         id == CMD_RESTART ? "restart" : "switch off");
+                show(p);
+                return;
+            }
+            note("command %u confirmed", id);
+            close_panel("command");
+            ShutdownA(id == CMD_RESTART ? SD_ACTION_COLDREBOOT : SD_ACTION_POWEROFF);
+            return;
+        }
         note("command %u", id);
         close_panel("command");
         if (id == CMD_SETTINGS) app.want_prefs = 1;
         else if (id == CMD_RESCAN) ln_scan_again(app.scan);
         else if (id == CMD_QUIT) app.quit = 1;
+        return;
+    }
+    if (row->source == LN_SRC_PROGRAMS && row->key >= WIN_KEY) {
+        int shown = show_window((int)(row->key & 0xffff));
+        note("window '%s' shown=%d", row->title, shown);
+        close_panel("window");
+        if (!shown) open_panel("That window is no longer open");
         return;
     }
     if (!(e = ln_index_find(app.index, row->key))) return;
@@ -548,6 +684,7 @@ static void panel_key(const struct IntuiMessage *im)
     struct ln_key_out o;
     if (!ln_keys_translate(im, &key, &mods, utf8, sizeof utf8, &n)) return;
     p->caret_on = 1; p->ticks = 0;
+    if (app.confirm && key != LN_K_RETURN) { app.confirm = 0; p->footer[0] = 0; }
     switch (ln_queryline_key(p->doc, key, mods, utf8, n, &o)) {
     case LN_ACT_NONE: return;
     case LN_ACT_CARET: break;
