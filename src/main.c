@@ -40,6 +40,7 @@
 #include "dockbar/widgets.h"
 #include "convert.h"
 #include "draw.h"
+#include "fileindex.h"
 #include "icons_aros.h"
 #include "index.h"
 #include "keys_aros.h"
@@ -118,6 +119,10 @@ static struct {
     struct ln_rates rates;
     /* what the one provider on its way is for */
     int job;
+    /* the file index: the one in use and the one being filled by a walk */
+    struct ln_fileindex *files, *files_next;
+    char files_path[272];
+    char act_path[600];     /* the path the actions of a program or file work on */
     /* the Weather widget, when one is found (the launcher's own, or Dockbar's) */
     char wx_root[512], wx_provider[600], wx_request[128];
     unsigned long wx_generation;
@@ -173,7 +178,7 @@ static char *read_file(const char *path, size_t *n)
     long size;
     *n = 0;
     if (!f) return NULL;
-    if (!fseek(f, 0, SEEK_END) && (size = ftell(f)) >= 0 && size < 4 * 1024 * 1024 && !fseek(f, 0, SEEK_SET)
+    if (!fseek(f, 0, SEEK_END) && (size = ftell(f)) >= 0 && size < 64 * 1024 * 1024 && !fseek(f, 0, SEEK_SET)
         && (buf = malloc((size_t)size + 1))) {
         *n = fread(buf, 1, (size_t)size, f);
         buf[*n] = 0;
@@ -593,6 +598,13 @@ static const struct action shell_actions[] = {
     { A_COPY_TEXT, "Copy Command", "Put the command on the clipboard" },
     { 0, NULL, NULL }
 };
+static const struct action file_actions[] = {
+    { A_DEFAULT, "Open", "As a double click in a drawer window would" },
+    { A_SHOW_DRAWER, "Show in Drawer", "Open the drawer it is in" },
+    { A_COPY_PATH, "Copy Path", "Put its full path on the clipboard" },
+    { A_SHELL_HERE, "Open Shell Here", "A Shell in its drawer" },
+    { 0, NULL, NULL }
+};
 static const struct action package_actions[] = {
     { A_DEFAULT, "Install", "Install the package" },
     { A_COPY_TEXT, "Copy Name", "Put the package's name on the clipboard" },
@@ -605,7 +617,7 @@ enum { CMD_SETTINGS = 1, CMD_RESCAN, CMD_QUIT, CMD_RESTART, CMD_SHUTDOWN, CMD_DO
 #define WIN_KEY 0xfffe0000u         /* row keys of open windows */
 static const struct { unsigned id; const char *title, *subtitle; } commands[] = {
     { CMD_SETTINGS, "Launcher Settings", "Folders, look, start with the system" },
-    { CMD_RESCAN, "Rescan Programs", "Look through the folders again" },
+    { CMD_RESCAN, "Rescan Programs and Files", "Look through the folders again" },
     { CMD_QUIT, "Quit Launcher", "Stop the launcher until it is started again" },
     { CMD_RESTART, "Restart Computer", "Asks once more before it restarts" },
     { CMD_SHUTDOWN, "Shut Down Computer", "Asks once more before it switches off" },
@@ -652,6 +664,29 @@ static int dockbar_install(char *text, size_t cap)
     }
     DeleteMsgPort(reply);
     return sent && (m.result == DOCKBAR_WIDGETS_OK || m.result == DOCKBAR_WIDGETS_UPDATED);
+}
+
+/* The files shown for the current query: their paths, by row key. A key is
+ * a number made from the path, so that an icon read for it stays right. */
+#define FILE_ROWS 6
+#define FILE_KEY 0x80000000u
+static struct { unsigned key; char path[700]; char title[400]; char where[600]; int is_dir; } file_hits[FILE_ROWS];
+static int file_hit_count;
+
+static unsigned path_key(const char *path)
+{
+    unsigned h = 2166136261u;
+    while (*path) { h ^= (unsigned char)(*path++ | 32); h *= 16777619u; }
+    h |= FILE_KEY;
+    return h >= WIN_KEY ? h - 0x00030000u : h;      /* keep clear of the windows' and commands' keys */
+}
+
+static const char *file_path(unsigned key)
+{
+    int i;
+    for (i = 0; i < file_hit_count; i++)
+        if (file_hits[i].key == key) return file_hits[i].path;
+    return NULL;
 }
 
 /* The windows that were open when the panel was called: what is shown
@@ -729,6 +764,7 @@ static const struct action *actions_of(int source, unsigned key)
     case LN_SRC_SHELL: return shell_actions;
     case LN_SRC_CALC: return calc_actions;
     case LN_SRC_PACKAGES: return package_actions;
+    case LN_SRC_FILES: return file_actions;
     case LN_SRC_PROGRAMS: return key >= CMD_KEY ? command_actions : key >= WIN_KEY ? window_actions : program_actions;
     default: return NULL;
     }
@@ -759,6 +795,7 @@ static void answer(void)
         ln_results_answer(p->res, cur, LN_SRC_CALC, row, 0);
         ln_results_answer(p->res, cur, LN_SRC_PROGRAMS, row, 0);
         ln_results_answer(p->res, cur, LN_SRC_PACKAGES, row, 0);
+        ln_results_answer(p->res, cur, LN_SRC_FILES, row, 0);
         for (i = 0; a && a[i].id; i++) {
             if (!ln_match(q, qn, a[i].title, strlen(a[i].title), &row[total].m)) continue;
             row[total].key = a[i].id;
@@ -784,6 +821,7 @@ static void answer(void)
         ln_results_answer(p->res, cur, LN_SRC_CALC, row, 0);
         ln_results_answer(p->res, cur, LN_SRC_PROGRAMS, row, 0);
         ln_results_answer(p->res, cur, LN_SRC_PACKAGES, row, 0);
+        ln_results_answer(p->res, cur, LN_SRC_FILES, row, 0);
         return;
     }
     ln_results_answer(p->res, cur, LN_SRC_SHELL, row, 0);
@@ -880,6 +918,30 @@ static void answer(void)
             }
     }
     ln_results_answer(p->res, cur, LN_SRC_PACKAGES, row, total);
+
+    /* files and drawers of the indexed folders, from three letters on */
+    memset(row, 0, sizeof row);
+    file_hit_count = 0;
+    if (app.files && qn >= 3) {
+        struct ln_file f[FILE_ROWS];
+        int k = ln_fileindex_query(app.files, q, qn, f, FILE_ROWS);
+        for (i = 0; i < k; i++) {
+            size_t dl = strlen(f[i].dir);
+            int sep = dl && f[i].dir[dl - 1] != ':' && f[i].dir[dl - 1] != '/';
+            snprintf(file_hits[i].path, sizeof file_hits[i].path, "%s%s%s", f[i].dir, sep ? "/" : "", f[i].name);
+            copy_shown(file_hits[i].title, sizeof file_hits[i].title, f[i].name);
+            copy_shown(file_hits[i].where, sizeof file_hits[i].where, f[i].dir);
+            file_hits[i].is_dir = f[i].is_dir;
+            file_hits[i].key = path_key(file_hits[i].path);
+            row[i].key = file_hits[i].key;
+            row[i].title = file_hits[i].title;
+            row[i].subtitle = file_hits[i].where;
+            row[i].kind = f[i].is_dir ? "Drawer" : "File";
+            row[i].score = FILE_ROWS - i;
+        }
+        file_hit_count = k;
+    }
+    ln_results_answer(p->res, cur, LN_SRC_FILES, row, file_hit_count);
 }
 
 /* --- icons --------------------------------------------------------------- */
@@ -887,13 +949,16 @@ static void answer(void)
 static const unsigned char *row_icon(void *ctx, const struct ln_row *row, int size)
 {
     (void)ctx;
+    if (row->source == LN_SRC_FILES) return ln_icons_get(app.icons, row->key, size);
     return row->source == LN_SRC_PROGRAMS && row->key < WIN_KEY ? ln_icons_get(app.icons, row->key, size) : NULL;
 }
 
 static const char *icon_path(void *ctx, unsigned id)
 {
-    const struct ln_entry *e = ln_index_find(app.index, id);
+    const struct ln_entry *e;
     (void)ctx;
+    if (id & FILE_KEY) return file_path(id);
+    e = ln_index_find(app.index, id);
     return e ? e->path : NULL;
 }
 
@@ -1123,6 +1188,12 @@ static void actions_enter(void)
     app.act_source = row->source;
     app.act_key = row->key;
     snprintf(app.act_title, sizeof app.act_title, "%s", row->title);
+    app.act_path[0] = 0;
+    if (row->source == LN_SRC_FILES && file_path(row->key)) snprintf(app.act_path, sizeof app.act_path, "%s", file_path(row->key));
+    else if (row->source == LN_SRC_PROGRAMS && row->key < WIN_KEY) {
+        const struct ln_entry *e = ln_index_find(app.index, row->key);
+        if (e) snprintf(app.act_path, sizeof app.act_path, "%s", e->path);
+    }
     snprintf(app.act_query, sizeof app.act_query, "%s", q);
     ze_set_text(p->doc, "", 0);
     query_changed();
@@ -1147,24 +1218,24 @@ static void actions_leave(void)
 /* An action other than the result's own. */
 static void run_action(unsigned id)
 {
-    const struct ln_entry *e = app.act_source == LN_SRC_PROGRAMS && app.act_key < WIN_KEY ? ln_index_find(app.index, app.act_key) : NULL;
-    char drawer[512], text[200];
+    const char *path = app.act_path[0] ? app.act_path : NULL;
+    char drawer[600], text[200];
     APTR was = quiet();
     int ok = 0;
     drawer[0] = 0;
-    if (e) {
-        size_t n = strlen(e->path);
-        while (n && e->path[n - 1] != '/' && e->path[n - 1] != ':') n--;
-        if (n > 1 && e->path[n - 1] == '/') n--;
-        if (n < sizeof drawer) { memcpy(drawer, e->path, n); drawer[n] = 0; }
+    if (path) {
+        size_t n = strlen(path);
+        while (n && path[n - 1] != '/' && path[n - 1] != ':') n--;
+        if (n > 1 && path[n - 1] == '/') n--;
+        if (n < sizeof drawer) { memcpy(drawer, path, n); drawer[n] = 0; }
     }
     switch (id) {
     case A_SHOW_DRAWER:
         ok = drawer[0] && OpenWorkbenchObjectA((STRPTR)drawer, NULL) != 0;
         break;
     case A_COPY_PATH:
-        if (e) {
-            char *shown = zt_path_from_dos(e->path);
+        if (path) {
+            char *shown = zt_path_from_dos(path);
             ok = shown && ln_clip_write(shown, strlen(shown));
             if (shown) zt_free(shown);
         }
@@ -1247,6 +1318,19 @@ static void run_selected(void)
         close_panel("copied");
         return;
     }
+    if (row->source == LN_SRC_FILES) {
+        const char *fp = file_path(row->key);
+        char *copy = fp ? strdup(fp) : NULL;
+        if (!copy) return;
+        close_panel("file");
+        was = quiet();
+        ok = OpenWorkbenchObjectA((STRPTR)copy, NULL) != 0;
+        loud(was);
+        note("file '%s' opened=%d", copy, ok);
+        if (!ok) open_panel("That file could not be opened");
+        free(copy);
+        return;
+    }
     if (row->source == LN_SRC_PACKAGES) {
         int i = (int)row->key;
         char cmd[200], title[160];
@@ -1313,7 +1397,7 @@ static void run_selected(void)
         note("command %u", id);
         close_panel("command");
         if (id == CMD_SETTINGS) app.want_prefs = 1;
-        else if (id == CMD_RESCAN) ln_scan_again(app.scan);
+        else if (id == CMD_RESCAN) { ln_scan_again(app.scan); ln_scan_files(app.scan); }
         else if (id == CMD_QUIT) app.quit = 1;
         return;
     }
@@ -1441,13 +1525,52 @@ static void scan_events(void)
             app.index_changed = 1;
             break;
         }
+        case LN_SCAN_FILES_BEGIN:
+            if (app.files_next) ln_fileindex_free(app.files_next);
+            app.files_next = ln_fileindex_new();
+            break;
+        case LN_SCAN_FILES:
+            if (app.files_next && m->path && m->title) {
+                char *line = m->title;
+                while (*line) {
+                    char *end = strchr(line, '\n');
+                    if (end) *end = 0;
+                    if (line[0] && line[1]) ln_fileindex_add(app.files_next, m->path, line + 1, line[0] == 'D');
+                    if (!end) break;
+                    line = end + 1;
+                }
+            }
+            break;
+        case LN_SCAN_FILES_END:
+            if (app.files_next) {
+                size_t n;
+                char *text;
+                APTR was = quiet();
+                BPTR dir;
+                if (app.files) ln_fileindex_free(app.files);
+                app.files = app.files_next;
+                app.files_next = NULL;
+                file_hit_count = 0;
+                /* kept for the next start, so that files are found at once */
+                if ((text = ln_fileindex_save(app.files, &n))) {
+                    if ((dir = CreateDir((CONST_STRPTR)app.dir))) UnLock(dir);
+                    write_file(app.files_path, text, n);
+                    free(text);
+                }
+                loud(was);
+                app.index_changed = 1;
+                note("files indexed: %d", ln_fileindex_count(app.files));
+            }
+            break;
         case LN_SCAN_PACKAGES: {
             size_t n;
             char *text = read_file(LN_PACKAGES_FILE, &n);
             struct ln_pkglist fresh;
             memset(&fresh, 0, sizeof fresh);
             if (text && ln_pkglist_parse(&fresh, text, n)) {
-                ln_pkglist_free(&app.pkgs);
+                if (app.files) ln_fileindex_free(app.files);
+    if (app.files_next) ln_fileindex_free(app.files_next);
+    ln_pkglist_free(&app.pkgs);
                 app.pkgs = fresh;
                 snprintf(app.apkg, sizeof app.apkg, "%s", m->path);
                 app.index_changed = 1;
@@ -1497,7 +1620,7 @@ static void open_settings(void)
             if (app.scan) ln_scan_stop(app.scan);
             for (i = 0; i < n; i++)
                 if (before[i]) { ln_index_begin(app.index, before[i]); ln_index_end(app.index, before[i]); }
-            app.scan = ln_scan_start(app.scanport, app.cfg.folder, app.cfg.folders);
+            app.scan = ln_scan_start(app.scanport, app.cfg.folder, app.cfg.folders, app.cfg.files, app.cfg.files_n, app.cfg.exclude, app.cfg.exclude_n);
         }
         note("settings saved folders=%d dark=%d compact=%d glass=%d", app.cfg.folders, app.cfg.dark, app.cfg.compact, app.cfg.glass);
     }
@@ -1594,7 +1717,20 @@ int main(int argc, char **argv)
         save_config();
         note("first start: autostart=%d", app.cfg.autostart);
     }
-    app.scan = ln_scan_start(app.scanport, app.cfg.folder, app.cfg.folders);
+    /* the file index kept from last time, until the new walk is through */
+    snprintf(app.files_path, sizeof app.files_path, "%s/files.index", app.dir);
+    if (app.cfg.files_n) {
+        size_t n;
+        char *text;
+        APTR was = quiet();
+        if ((text = read_file(app.files_path, &n))) {
+            if ((app.files = ln_fileindex_new())) ln_fileindex_load(app.files, text, n);
+            free(text);
+        }
+        loud(was);
+        note("files: %d kept from last time", app.files ? ln_fileindex_count(app.files) : 0);
+    }
+    app.scan = ln_scan_start(app.scanport, app.cfg.folder, app.cfg.folders, app.cfg.files, app.cfg.files_n, app.cfg.exclude, app.cfg.exclude_n);
     rates_init();
     rates_refresh();
     note("ready folders=%d scanner=%d", app.cfg.folders, app.scan != NULL);

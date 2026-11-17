@@ -153,6 +153,7 @@ const char *ln_source_name(int source)
     case LN_SRC_PROGRAMS: return "Results";
     case LN_SRC_PACKAGES: return "Packages";
     case LN_SRC_ACTIONS: return "Actions";
+    case LN_SRC_FILES: return "Files";
     default: return "";
     }
 }

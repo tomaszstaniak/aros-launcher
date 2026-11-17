@@ -12,7 +12,7 @@
 #include "match.h"
 
 /* The sources, in their order in the list. */
-enum { LN_SRC_SHELL = 0, LN_SRC_CALC = 1, LN_SRC_PROGRAMS = 2, LN_SRC_PACKAGES = 3, LN_SRC_ACTIONS = 4, LN_SRC_LAST = 8 };
+enum { LN_SRC_SHELL = 0, LN_SRC_CALC = 1, LN_SRC_PROGRAMS = 2, LN_SRC_PACKAGES = 3, LN_SRC_ACTIONS = 4, LN_SRC_FILES = 5, LN_SRC_LAST = 8 };
 
 struct ln_row {
     int source;

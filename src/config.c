@@ -39,6 +39,46 @@ int ln_config_add_folder(struct ln_config *c, const char *path)
     return 1;
 }
 
+int ln_config_add_files(struct ln_config *c, const char *path)
+{
+    char *p = clean(path, strlen(path));
+    int i;
+    if (!p) return 0;
+    if (!*p || c->files_n == LN_FOLDERS_MAX) { free(p); return 0; }
+    for (i = 0; i < c->files_n; i++)
+        if (same(c->files[i], p)) { free(p); return 0; }
+    c->files[c->files_n++] = p;
+    return 1;
+}
+
+int ln_config_add_exclude(struct ln_config *c, const char *what)
+{
+    char *p = clean(what, strlen(what));
+    int i;
+    if (!p) return 0;
+    if (!*p || c->exclude_n == LN_FOLDERS_MAX) { free(p); return 0; }
+    for (i = 0; i < c->exclude_n; i++)
+        if (same(c->exclude[i], p)) { free(p); return 0; }
+    c->exclude[c->exclude_n++] = p;
+    return 1;
+}
+
+void ln_config_remove_exclude(struct ln_config *c, int i)
+{
+    if (i < 0 || i >= c->exclude_n) return;
+    free(c->exclude[i]);
+    memmove(&c->exclude[i], &c->exclude[i + 1], sizeof c->exclude[0] * (size_t)(c->exclude_n - i - 1));
+    c->exclude_n--;
+}
+
+void ln_config_remove_files(struct ln_config *c, int i)
+{
+    if (i < 0 || i >= c->files_n) return;
+    free(c->files[i]);
+    memmove(&c->files[i], &c->files[i + 1], sizeof c->files[0] * (size_t)(c->files_n - i - 1));
+    c->files_n--;
+}
+
 void ln_config_remove_folder(struct ln_config *c, int i)
 {
     if (i < 0 || i >= c->folders) return;
@@ -51,6 +91,8 @@ void ln_config_free(struct ln_config *c)
 {
     int i;
     for (i = 0; i < c->folders; i++) free(c->folder[i]);
+    for (i = 0; i < c->files_n; i++) free(c->files[i]);
+    for (i = 0; i < c->exclude_n; i++) free(c->exclude[i]);
     free(c->other);
     memset(c, 0, sizeof *c);
 }
@@ -101,6 +143,16 @@ int ln_config_parse(struct ln_config *c, const char *text, size_t n)
             if (!p) return 0;
             if (*p) ln_config_add_folder(c, p);
             free(p);
+        } else if (eq && klen == 7 && !memcmp(line, "exclude", 7)) {
+            char *p = clean(eq + 1, len - 8);
+            if (!p) return 0;
+            if (*p) ln_config_add_exclude(c, p);
+            free(p);
+        } else if (eq && klen == 5 && !memcmp(line, "files", 5)) {
+            char *p = clean(eq + 1, len - 6);
+            if (!p) return 0;
+            if (*p) ln_config_add_files(c, p);
+            free(p);
         } else if (eq && klen == 5 && !memcmp(line, "theme", 5) && len - 6 == 5 && !memcmp(eq + 1, "light", 5)) {
             c->dark = 0;
         } else if (eq && klen == 5 && !memcmp(line, "theme", 5) && len - 6 == 4 && !memcmp(eq + 1, "dark", 4)) {
@@ -124,8 +176,12 @@ char *ln_config_text(const struct ln_config *c, size_t *n)
     char *out;
     int i;
     for (i = 0; i < c->folders; i++) cap += strlen(c->folder[i]) + 9;
+    for (i = 0; i < c->files_n; i++) cap += strlen(c->files[i]) + 8;
+    for (i = 0; i < c->exclude_n; i++) cap += strlen(c->exclude[i]) + 10;
     if (!(out = malloc(cap))) return NULL;
     for (i = 0; i < c->folders; i++) len += (size_t)snprintf(out + len, cap - len, "folder=%s\n", c->folder[i]);
+    for (i = 0; i < c->files_n; i++) len += (size_t)snprintf(out + len, cap - len, "files=%s\n", c->files[i]);
+    for (i = 0; i < c->exclude_n; i++) len += (size_t)snprintf(out + len, cap - len, "exclude=%s\n", c->exclude[i]);
     len += (size_t)snprintf(out + len, cap - len, "theme=%s\ncompact=%d\nglass=%d\n",
                             c->dark ? "dark" : "light", c->compact, c->glass);
     if (c->autostart >= 0) len += (size_t)snprintf(out + len, cap - len, "autostart=%d\n", c->autostart);

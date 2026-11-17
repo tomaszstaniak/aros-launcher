@@ -23,6 +23,12 @@ struct ln_scan {
     char **folder;              /* AllocVec'd copies */
     struct NotifyRequest *notify;
     UBYTE *dirty;
+    int files_n;
+    char **files;               /* folders walked for the file index */
+    volatile LONG want_files;   /* walk them (again) */
+    int exclude_n;
+    char **exclude;             /* paths and patterns kept out */
+    char **pattern;             /* the patterns, parsed; NULL for a path */
     char command[1200];         /* set by the main task before it signals CTRL_D */
     volatile LONG busy;         /* a command is waiting or running */
 };
@@ -115,6 +121,96 @@ static void scan_folder(struct ln_scan *s, int i)
     if (!stopping()) send(s, LN_SCAN_END, s->folder[i], NULL);
 }
 
+/* --- the file index ------------------------------------------------------- */
+
+#define BLOB 8192
+#define DEPTH_MAX 12
+
+static int same_path(const char *a, const char *b)
+{
+    while (*a && *b && (*a | 32) == (*b | 32)) { a++; b++; }
+    /* a trailing '/' on either side does not count */
+    while (*a == '/') a++;
+    while (*b == '/') b++;
+    return !*a && !*b;
+}
+
+/* Whether the entry name of drawer dir (full path in path) is kept out. */
+static int excluded(struct ln_scan *s, const char *path, const char *name)
+{
+    int i;
+    for (i = 0; i < s->exclude_n; i++) {
+        if (s->pattern[i]) { if (MatchPatternNoCase((CONST_STRPTR)s->pattern[i], (CONST_STRPTR)name)) return 1; }
+        else if (path && same_path(s->exclude[i], path)) return 1;
+    }
+    return 0;
+}
+
+/* Sends what was gathered of one drawer and starts again. */
+static void flush(struct ln_scan *s, const char *dir, char *blob, ULONG *used)
+{
+    if (!*used) return;
+    blob[*used] = 0;
+    send(s, LN_SCAN_FILES, dir, blob);
+    *used = 0;
+}
+
+/* Walks dir and everything below it. 0 when it was cut short. */
+static int walk_files(struct ln_scan *s, const char *dir, int depth, char *blob)
+{
+    struct FileInfoBlock *fib;
+    char *path;
+    BPTR lock;
+    ULONG used = 0;
+    int whole = 1;
+    if (!(lock = Lock((CONST_STRPTR)dir, SHARED_LOCK))) return 1;
+    fib = AllocDosObject(DOS_FIB, NULL);
+    path = AllocVec(PATH_MAX_LEN, MEMF_PUBLIC);
+    if (fib && path && Examine(lock, fib) && fib->fib_DirEntryType > 0) {
+        while (ExNext(lock, fib)) {
+            const char *name = (const char *)fib->fib_FileName;
+            ULONG nn = len(name);
+            int is_dir = fib->fib_DirEntryType > 0;
+            if (stopping()) { whole = 0; break; }
+            /* icons belong to their files; names starting with a dot are kept out */
+            if (!nn || name[0] == '.' || (!is_dir && is_info(name))) continue;
+            if (s->exclude_n && (!join(path, dir, name) || excluded(s, path, name))) continue;
+            if (used + nn + 3 >= BLOB) flush(s, dir, blob, &used);
+            blob[used++] = is_dir ? 'D' : 'F';
+            CopyMem((APTR)name, blob + used, nn);
+            used += nn;
+            blob[used++] = '\n';
+        }
+        flush(s, dir, blob, &used);
+        /* the drawers below, after this one's entries went out: the blob is free again */
+        if (whole && depth < DEPTH_MAX && Examine(lock, fib)) {
+            while (whole && ExNext(lock, fib)) {
+                const char *name = (const char *)fib->fib_FileName;
+                if (fib->fib_DirEntryType <= 0 || name[0] == '.' || !join(path, dir, name)) continue;
+                if (s->exclude_n && excluded(s, path, name)) continue;
+                whole = walk_files(s, path, depth + 1, blob);
+            }
+        }
+    }
+    if (path) FreeVec(path);
+    if (fib) FreeDosObject(DOS_FIB, fib);
+    UnLock(lock);
+    return whole;
+}
+
+static void index_files(struct ln_scan *s)
+{
+    char *blob = AllocVec(BLOB + 4, MEMF_PUBLIC);
+    int i, whole = 1;
+    if (!blob) return;
+    send(s, LN_SCAN_FILES_BEGIN, NULL, NULL);
+    for (i = 0; i < s->files_n && whole; i++)
+        if (!excluded(s, s->files[i], "")) whole = walk_files(s, s->files[i], 0, blob);
+    /* a walk cut short must not replace a whole index */
+    if (whole) send(s, LN_SCAN_FILES_END, NULL, NULL);
+    FreeVec(blob);
+}
+
 /* The package catalogue: apkg prints it, the main task reads the file.
  * apkg is looked for where its package and its manual install put it. */
 static void packages(struct ln_scan *s)
@@ -156,6 +252,7 @@ static void entry(void)
         }
     for (i = 0; i < s->n && !stopping(); i++) scan_folder(s, i);
     if (!stopping()) packages(s);
+    if (!stopping() && s->files_n) index_files(s);
 
     while (running) {
         ULONG got = Wait(portsig | SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D | SIGBREAKF_CTRL_E | SIGBREAKF_CTRL_F);
@@ -165,6 +262,7 @@ static void entry(void)
         if (got & SIGBREAKF_CTRL_F)
             for (i = 0; i < s->n; i++) s->dirty[i] = any = 1;
         if (got & (SIGBREAKF_CTRL_E | SIGBREAKF_CTRL_F)) packages(s);
+        if (s->want_files) { s->want_files = 0; if (s->files_n) index_files(s); }
         if ((got & SIGBREAKF_CTRL_D) && s->busy) {
             SystemTags((CONST_STRPTR)s->command, SYS_Input, (IPTR)NULL, SYS_Output, (IPTR)NULL, TAG_DONE);
             /* free for the next command before the main task hears of this one */
@@ -209,12 +307,24 @@ static void free_scan(struct ln_scan *s)
         for (i = 0; i < s->n; i++)
             if (s->folder[i]) FreeVec(s->folder[i]);
     if (s->folder) FreeVec(s->folder);
+    if (s->files)
+        for (i = 0; i < s->files_n; i++)
+            if (s->files[i]) FreeVec(s->files[i]);
+    if (s->files) FreeVec(s->files);
+    if (s->exclude)
+        for (i = 0; i < s->exclude_n; i++) {
+            if (s->exclude[i]) FreeVec(s->exclude[i]);
+            if (s->pattern && s->pattern[i]) FreeVec(s->pattern[i]);
+        }
+    if (s->exclude) FreeVec(s->exclude);
+    if (s->pattern) FreeVec(s->pattern);
     if (s->notify) FreeVec(s->notify);
     if (s->dirty) FreeVec(s->dirty);
     FreeVec(s);
 }
 
-struct ln_scan *ln_scan_start(struct MsgPort *to, char *const *folders, int n)
+struct ln_scan *ln_scan_start(struct MsgPort *to, char *const *folders, int n, char *const *files, int files_n,
+                              char *const *exclude, int exclude_n)
 {
     struct ln_scan *s = AllocVec(sizeof *s, MEMF_PUBLIC | MEMF_CLEAR);
     int i;
@@ -230,6 +340,33 @@ struct ln_scan *ln_scan_start(struct MsgPort *to, char *const *folders, int n)
         if (!(s->folder[i] = AllocVec(k, MEMF_PUBLIC))) { free_scan(s); return NULL; }
         CopyMem((APTR)folders[i], s->folder[i], k);
     }
+    s->files = AllocVec(sizeof(char *) * (ULONG)(files_n + 1), MEMF_PUBLIC | MEMF_CLEAR);
+    if (!s->files) { free_scan(s); return NULL; }
+    s->files_n = files_n;
+    for (i = 0; i < files_n; i++) {
+        ULONG k = len(files[i]) + 1;
+        if (!(s->files[i] = AllocVec(k, MEMF_PUBLIC))) { free_scan(s); return NULL; }
+        CopyMem((APTR)files[i], s->files[i], k);
+    }
+    s->exclude = AllocVec(sizeof(char *) * (ULONG)(exclude_n + 1), MEMF_PUBLIC | MEMF_CLEAR);
+    s->pattern = AllocVec(sizeof(char *) * (ULONG)(exclude_n + 1), MEMF_PUBLIC | MEMF_CLEAR);
+    if (!s->exclude || !s->pattern) { free_scan(s); return NULL; }
+    s->exclude_n = exclude_n;
+    for (i = 0; i < exclude_n; i++) {
+        ULONG k = len(exclude[i]) + 1, c, is_path = 0;
+        if (!(s->exclude[i] = AllocVec(k, MEMF_PUBLIC))) { free_scan(s); return NULL; }
+        CopyMem((APTR)exclude[i], s->exclude[i], k);
+        for (c = 0; c + 1 < k; c++) if (exclude[i][c] == ':' || exclude[i][c] == '/') is_path = 1;
+        if (!is_path) {
+            /* a name pattern; one that does not parse matches nothing */
+            if ((s->pattern[i] = AllocVec(k * 2 + 4, MEMF_PUBLIC)) &&
+                ParsePatternNoCase((CONST_STRPTR)exclude[i], (STRPTR)s->pattern[i], (LONG)(k * 2 + 2)) < 0) {
+                FreeVec(s->pattern[i]);
+                s->pattern[i] = NULL;
+                s->exclude[i][0] = 0;
+            }
+        }
+    }
     s->proc = CreateNewProcTags(NP_Entry, (IPTR)entry, NP_Name, (IPTR)"Launcher scanner",
                                 NP_StackSize, 65536, NP_Priority, -1, NP_UserData, (IPTR)s,
                                 NP_WindowPtr, (IPTR)-1, NP_CopyVars, FALSE, TAG_DONE);
@@ -240,6 +377,11 @@ struct ln_scan *ln_scan_start(struct MsgPort *to, char *const *folders, int n)
 void ln_scan_again(struct ln_scan *s)
 {
     if (s && s->proc) Signal(&s->proc->pr_Task, SIGBREAKF_CTRL_F);
+}
+
+void ln_scan_files(struct ln_scan *s)
+{
+    if (s && s->proc) { s->want_files = 1; Signal(&s->proc->pr_Task, SIGBREAKF_CTRL_E); }
 }
 
 void ln_scan_packages(struct ln_scan *s)

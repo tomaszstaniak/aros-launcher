@@ -95,7 +95,8 @@ static const unsigned char *source(struct DiskObject *icon, int *w, int *h, int 
  * icon has no picture this can use. */
 static unsigned char *load(const char *path, int size)
 {
-    struct DiskObject *icon = GetIconTags((CONST_STRPTR)path, ICONGETA_FailIfUnavailable, TRUE,
+    struct DiskObject *icon = /* a file without an icon of its own gets the system's picture for its kind */
+        GetIconTags((CONST_STRPTR)path, ICONGETA_FailIfUnavailable, FALSE,
                                           ICONGETA_RemapIcon, FALSE, ICONGETA_GenerateImageMasks, FALSE, TAG_DONE);
     const unsigned char *src;
     unsigned char *scaled = NULL, *out = NULL;
