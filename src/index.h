@@ -27,6 +27,8 @@ void ln_index_free(struct ln_index *x);
 unsigned ln_index_put(struct ln_index *x, const char *path, const char *title);
 void ln_index_remove(struct ln_index *x, const char *path);
 const struct ln_entry *ln_index_find(const struct ln_index *x, unsigned id);
+/* The entry of this path (compared without case); NULL none. */
+const struct ln_entry *ln_index_find_path(const struct ln_index *x, const char *path);
 int ln_index_count(const struct ln_index *x);
 
 /* A rescan of dir: after ln_index_end the entries inside dir (at any

@@ -115,6 +115,21 @@ const struct ln_entry *ln_index_find(const struct ln_index *x, unsigned id)
     return NULL;
 }
 
+const struct ln_entry *ln_index_find_path(const struct ln_index *x, const char *path)
+{
+    int i;
+    for (i = 0; i < x->n; i++) {
+        const char *a = x->s[i].e.path, *b = path;
+        if (!x->s[i].present) continue;
+        for (; *a && *b; a++, b++) {
+            int ca = *a >= 'A' && *a <= 'Z' ? *a + 32 : *a, cb = *b >= 'A' && *b <= 'Z' ? *b + 32 : *b;
+            if (ca != cb) break;
+        }
+        if (!*a && !*b) return &x->s[i].e;
+    }
+    return NULL;
+}
+
 int ln_index_count(const struct ln_index *x)
 {
     int i, c = 0;

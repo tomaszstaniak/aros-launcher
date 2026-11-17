@@ -40,6 +40,7 @@
 #include "autostart_aros.h"
 #include "calc.h"
 #include "config.h"
+#include "shortcuts.h"
 #include "dockbar/widgets.h"
 #include "convert.h"
 #include "draw.h"
@@ -60,9 +61,10 @@
 #include "zk_present.h"
 #include "zk_text_aros.h"
 
-static const char version[] __attribute__((used)) = "$VER: Launcher 0.3 (17.11.2026)";
+static const char version[] __attribute__((used)) = "$VER: Launcher 0.4 (18.11.2026)";
 
 #define EVT_HOTKEY 1
+#define EVT_SHORTCUT 100      /* and the next LN_SHORTCUTS_MAX: the hotkeys of results */
 #define SHADOW 28
 #define BLUR 10
 #define QUERY_ROWS 60
@@ -128,6 +130,12 @@ static struct {
     char files_path[272];
     double files_walked;            /* when the file index was last asked for */
     char act_path[600];     /* the path the actions of a program or file work on */
+    /* aliases and hotkeys of results */
+    struct ln_shortcuts shortcuts;
+    char shortcuts_path[272];
+    int prompt;             /* asking for an alias (LN_ALIAS) or a hotkey (LN_HOTKEY); 0 not */
+    char prompt_target[600], prompt_title[200];
+    int listing;            /* showing the list of aliases and hotkeys */
     /* ARexx: the launcher's own port, and the port answers to what it sent come to */
     struct MsgPort *rexxport, *rexxreply;
     int rexx_out;           /* commands sent and not answered yet */
@@ -498,6 +506,7 @@ static int rexx_replies(void)
 static int open_panel(const char *footer);
 static void close_panel(const char *why);
 static void query_changed(void);
+static void show(struct panel *p);
 
 /* Commands other programs send to the launcher's port. Returns 0 when the
  * launcher is to quit. */
@@ -734,13 +743,15 @@ static void moment(struct ln_now *n)
 }
 
 /* The actions of a result, for Tab. The first is what Return does. */
-enum { A_DEFAULT = 1, A_SHOW_DRAWER, A_COPY_PATH, A_SHELL_HERE, A_SHOW_SCREEN, A_COPY_BOTH, A_COPY_TEXT };
+enum { A_DEFAULT = 1, A_SHOW_DRAWER, A_COPY_PATH, A_SHELL_HERE, A_SHOW_SCREEN, A_COPY_BOTH, A_COPY_TEXT, A_SET_ALIAS, A_SET_HOTKEY };
 struct action { unsigned id; const char *title, *subtitle; };
 static const struct action program_actions[] = {
     { A_DEFAULT, "Open", "Start the program" },
     { A_SHOW_DRAWER, "Show in Drawer", "Open the drawer it is in" },
     { A_COPY_PATH, "Copy Path", "Put its full path on the clipboard" },
     { A_SHELL_HERE, "Open Shell Here", "A Shell in the program's drawer" },
+    { A_SET_ALIAS, "Set Alias...", "A short word that finds it first" },
+    { A_SET_HOTKEY, "Set Hotkey...", "Keys that start it from anywhere" },
     { 0, NULL, NULL }
 };
 static const struct action window_actions[] = {
@@ -748,7 +759,12 @@ static const struct action window_actions[] = {
     { A_SHOW_SCREEN, "Show Its Screen", "Bring only the window's screen to the front" },
     { 0, NULL, NULL }
 };
-static const struct action command_actions[] = { { A_DEFAULT, "Run", "Run the command" }, { 0, NULL, NULL } };
+static const struct action command_actions[] = {
+    { A_DEFAULT, "Run", "Run the command" },
+    { A_SET_ALIAS, "Set Alias...", "A short word that finds it first" },
+    { A_SET_HOTKEY, "Set Hotkey...", "Keys that run it from anywhere" },
+    { 0, NULL, NULL }
+};
 static const struct action calc_actions[] = {
     { A_DEFAULT, "Copy Result", "Put the answer on the clipboard" },
     { A_COPY_BOTH, "Copy Question and Result", "Both, with an equals sign" },
@@ -773,7 +789,7 @@ static const struct action package_actions[] = {
 };
 
 /* What the launcher itself can do, found by name like programs. */
-enum { CMD_SETTINGS = 1, CMD_RESCAN, CMD_QUIT, CMD_RESTART, CMD_SHUTDOWN, CMD_DOCKBAR, CMD_ABOUT };
+enum { CMD_SETTINGS = 1, CMD_RESCAN, CMD_QUIT, CMD_RESTART, CMD_SHUTDOWN, CMD_DOCKBAR, CMD_ABOUT, CMD_SHORTCUTS };
 #define CMD_KEY 0xffff0000u         /* row keys of commands; program ids are far below */
 #define WIN_KEY 0xfffe0000u         /* row keys of open windows */
 static const struct { unsigned id; const char *title, *subtitle; } commands[] = {
@@ -783,7 +799,7 @@ static const struct { unsigned id; const char *title, *subtitle; } commands[] = 
     { CMD_QUIT, "Quit Launcher", "Stop the launcher until it is started again" },
     { CMD_RESTART, "Restart Computer", "Asks once more before it restarts" },
     { CMD_SHUTDOWN, "Shut Down Computer", "Asks once more before it switches off" },
-    { CMD_DOCKBAR, "Add Currency to Dockbar", "Install the Currency widget into the running Dockbar" },
+    { CMD_SHORTCUTS, "Aliases and Hotkeys", "See, change or remove them" },
 };
 
 /* Dockbar 0.6.0 and later take widget packages through a public port. */
@@ -932,6 +948,162 @@ static const struct action *actions_of(int source, unsigned key)
     }
 }
 
+/* ---- aliases and hotkeys of results ---- */
+static CxObj *hotkey_filters[LN_SHORTCUTS_MAX];
+
+static void shortcuts_save(void)
+{
+    size_t n;
+    char *text = ln_shortcuts_text(&app.shortcuts, &n);
+    APTR was = quiet();
+    BPTR dir;
+    if (text) {
+        if ((dir = CreateDir((CONST_STRPTR)app.dir))) UnLock(dir);
+        write_file(app.shortcuts_path, text, n);
+        free(text);
+    }
+    loud(was);
+}
+
+/* A commodities description that the system understands and that is not
+ * the launcher's own hotkey. */
+static int hotkey_valid(const char *key)
+{
+    IX ix;
+    char mine[80];
+    memset(&ix, 0, sizeof ix);
+    ix.ix_Version = IX_VERSION;
+    if (ParseIX((STRPTR)key, &ix) != 0) return 0;
+    return !ln_shortcut_key(app.hotkey, mine, sizeof mine) || strcmp(mine, key);
+}
+
+/* One filter per hotkey, made again after every change. */
+static void hotkeys_register(void)
+{
+    int i;
+    if (!app.broker) return;
+    for (i = 0; i < LN_SHORTCUTS_MAX; i++)
+        if (hotkey_filters[i]) { DeleteCxObjAll(hotkey_filters[i]); hotkey_filters[i] = NULL; }
+    for (i = 0; i < app.shortcuts.n; i++) {
+        const struct ln_shortcut *e = &app.shortcuts.v[i];
+        CxObj *filter;
+        if (e->kind != LN_HOTKEY || !hotkey_valid(e->key)) continue;
+        if (!(filter = CxFilter((STRPTR)e->key))) continue;
+        AttachCxObj(filter, CxSender(app.cxport, EVT_SHORTCUT + i));
+        AttachCxObj(filter, CxTranslate(NULL));
+        if (CxObjError(filter)) { note("hotkey '%s' refused", e->key); DeleteCxObjAll(filter); continue; }
+        AttachCxObj(app.broker, filter);
+        hotkey_filters[i] = filter;
+    }
+}
+
+/* What the actions on show work on, as a shortcut's target. */
+static int act_target(char *out, size_t cap)
+{
+    if (app.act_path[0]) return snprintf(out, cap, "%s", app.act_path) < (int)cap;
+    if (app.act_source == LN_SRC_PROGRAMS && app.act_key >= CMD_KEY) return snprintf(out, cap, "command:%s", app.act_title) < (int)cap;
+    return 0;
+}
+
+static void prompt_begin(int kind, const char *target, const char *title)
+{
+    struct panel *p = &app.p;
+    const char *has = ln_shortcuts_key_of(&app.shortcuts, (char)kind, target);
+    app.prompt = kind;
+    snprintf(app.prompt_target, sizeof app.prompt_target, "%s", target);
+    snprintf(app.prompt_title, sizeof app.prompt_title, "%s", title);
+    ze_set_text(p->doc, has ? has : "", has ? strlen(has) : 0);
+    query_changed();
+    snprintf(p->footer, sizeof p->footer, "%s for %.120s", kind == LN_ALIAS ? "Alias" : "Hotkey", title);
+    show(p);
+}
+
+static void actions_leave(void);
+
+/* Return in the prompt: keeps what was typed, or removes when nothing was. */
+static void prompt_save(void)
+{
+    struct panel *p = &app.p;
+    size_t qn;
+    const char *q = ze_text(p->doc, &qn);
+    char key[80], said[200];
+    int has = ln_shortcut_key(q, key, sizeof key), kind = app.prompt;
+    if (qn && !has) return;
+    if (has && kind == LN_HOTKEY && !hotkey_valid(key)) {
+        snprintf(p->footer, sizeof p->footer, "Not a key combination; an example: ctrl alt w");
+        show(p);
+        return;
+    }
+    if (!ln_shortcuts_set(&app.shortcuts, (char)kind, has ? key : "", app.prompt_target, app.prompt_title)) {
+        snprintf(p->footer, sizeof p->footer, "No room for another one");
+        show(p);
+        return;
+    }
+    shortcuts_save();
+    if (kind == LN_HOTKEY) hotkeys_register();
+    note("%s '%s' for '%s'", kind == LN_ALIAS ? "alias" : "hotkey", has ? key : "", app.prompt_target);
+    if (has) snprintf(said, sizeof said, "%s %.40s set for %.100s", kind == LN_ALIAS ? "Alias" : "Hotkey", key, app.prompt_title);
+    else snprintf(said, sizeof said, "%s removed from %.100s", kind == LN_ALIAS ? "Alias" : "Hotkey", app.prompt_title);
+    app.prompt = 0;
+    if (app.listing) { ze_set_text(p->doc, "", 0); query_changed(); }
+    else if (app.act) actions_leave();
+    snprintf(p->footer, sizeof p->footer, "%.150s", said);
+    show(p);
+}
+
+/* A hotkey of a result was pressed. */
+static void hotkey_fired(int i)
+{
+    const struct ln_shortcut *e;
+    size_t c;
+    if (i < 0 || i >= app.shortcuts.n || app.shortcuts.v[i].kind != LN_HOTKEY) return;
+    e = &app.shortcuts.v[i];
+    note("hotkey '%s' -> '%s'", e->key, e->target);
+    if (!strncmp(e->target, "command:", 8)) {
+        for (c = 0; c < sizeof commands / sizeof commands[0]; c++) {
+            if (strcmp(commands[c].title, e->target + 8)) continue;
+            switch (commands[c].id) {
+            case CMD_SETTINGS: close_panel("hotkey"); app.want_prefs = 1; app.prefs_page = 0; return;
+            case CMD_ABOUT: close_panel("hotkey"); app.want_prefs = 1; app.prefs_page = 4; return;
+            case CMD_RESCAN: ln_scan_again(app.scan); ln_scan_files(app.scan); return;
+            case CMD_QUIT: app.quit = 1; return;
+            default:
+                /* a command that asks first, or shows a list: the panel with it found */
+                if (open_panel(NULL)) {
+                    ze_set_text(app.p.doc, commands[c].title, strlen(commands[c].title));
+                    query_changed();
+                    show(&app.p);
+                }
+                return;
+            }
+        }
+        return;
+    }
+    {
+        const struct ln_entry *entry = ln_index_find_path(app.index, e->target);
+        char *path = strdup(e->target);
+        APTR was;
+        BPTR lock;
+        int ok = 0;
+        if (!path) return;
+        if (entry) { ln_index_used(app.index, entry->id, now()); save_counts(); }
+        close_panel("hotkey");
+        was = quiet();
+        if ((lock = Lock((CONST_STRPTR)path, SHARED_LOCK))) {
+            UnLock(lock);
+            ok = OpenWorkbenchObjectA((STRPTR)path, NULL) != 0;
+        }
+        loud(was);
+        note("run '%s' ok=%d", path, ok);
+        if (!ok) {
+            char msg[160];
+            snprintf(msg, sizeof msg, "Could not start %.100s", e->title[0] ? e->title : path);
+            open_panel(msg);
+        }
+        free(path);
+    }
+}
+
 /* Answers the current query: the calculator's row, then one list of
  * programs and the launcher's own commands, best match first. Commands
  * and programs are ranked together, so that "quit" finds Quit Launcher
@@ -942,7 +1114,7 @@ static void answer(void)
     const struct ln_entry *e[QUERY_ROWS];
     static struct ln_match m[QUERY_ROWS];
     static struct ln_row row[QUERY_ROWS + WIN_MAX + 8];
-    char *sub[QUERY_ROWS];
+    char *sub[QUERY_ROWS], *alias_sub = NULL;
     size_t qn, c;
     const char *q = ze_text(p->doc, &qn);
     unsigned cur = ln_results_current(p->res);
@@ -951,6 +1123,46 @@ static void answer(void)
     /* the actions of one result, narrowed by what is typed */
     memset(row, 0, sizeof row);
     total = 0;
+    if (app.prompt || app.listing) {
+        static char titles[LN_SHORTCUTS_MAX][140], subs[2][260];
+        ln_results_answer(p->res, cur, LN_SRC_SHELL, row, 0);
+        ln_results_answer(p->res, cur, LN_SRC_CALC, row, 0);
+        ln_results_answer(p->res, cur, LN_SRC_PROGRAMS, row, 0);
+        ln_results_answer(p->res, cur, LN_SRC_PACKAGES, row, 0);
+        ln_results_answer(p->res, cur, LN_SRC_FILES, row, 0);
+        ln_results_answer(p->res, cur, LN_SRC_REXX, row, 0);
+        if (app.prompt) {
+            /* one row: what Return would do with what is typed */
+            char key[80];
+            const struct ln_shortcut *other;
+            int has = ln_shortcut_key(q, key, sizeof key);
+            snprintf(titles[0], sizeof titles[0], "%s", has ? key : qn ? "?" : "(none)");
+            if (!has) snprintf(subs[0], sizeof subs[0], "Type %s for %.100s; Return with nothing typed removes it",
+                               app.prompt == LN_ALIAS ? "a short word" : "the keys, for example ctrl alt w", app.prompt_title);
+            else if (app.prompt == LN_HOTKEY && !hotkey_valid(key)) snprintf(subs[0], sizeof subs[0], "Not a key combination yet; an example: ctrl alt w");
+            else if ((other = ln_shortcuts_by_key(&app.shortcuts, (char)app.prompt, key)) && strcmp(other->target, app.prompt_target))
+                snprintf(subs[0], sizeof subs[0], "Belongs to %.80s now; Return moves it to %.80s", other->title, app.prompt_title);
+            else snprintf(subs[0], sizeof subs[0], "Return sets it for %.120s", app.prompt_title);
+            row[0].key = 1; row[0].title = titles[0]; row[0].subtitle = subs[0];
+            row[0].kind = app.prompt == LN_ALIAS ? "Alias" : "Hotkey"; row[0].score = 1;
+            ln_results_answer(p->res, cur, LN_SRC_ACTIONS, row, 1);
+            return;
+        }
+        /* the list of all of them, narrowed by what is typed */
+        for (i = 0; i < app.shortcuts.n && total < QUERY_ROWS; i++) {
+            const struct ln_shortcut *e1 = &app.shortcuts.v[i];
+            snprintf(titles[i], sizeof titles[i], "%.40s   %.90s", e1->key, e1->title[0] ? e1->title : e1->target);
+            if (!ln_match(q, qn, titles[i], strlen(titles[i]), &row[total].m)) continue;
+            row[total].key = 0x2000u | (unsigned)i;
+            row[total].title = titles[i];
+            row[total].subtitle = e1->target;
+            row[total].kind = e1->kind == LN_ALIAS ? "Alias" : "Hotkey";
+            row[total].score = (qn ? row[total].m.score : 0) + LN_SHORTCUTS_MAX - i;
+            total++;
+        }
+        ln_results_answer(p->res, cur, LN_SRC_ACTIONS, row, total);
+        return;
+    }
     if (app.act) {
         const struct action *a = actions_of(app.act_source, app.act_key);
         ln_results_answer(p->res, cur, LN_SRC_SHELL, row, 0);
@@ -1098,8 +1310,55 @@ static void answer(void)
             row[total].score = row[total].m.score - 5;       /* a program of the same name comes first */
             total++;
         }
+    {
+        /* an alias typed whole puts its program or command first; rows of
+           results that have an alias or a hotkey say so */
+        static char kinds[QUERY_ROWS + WIN_MAX + 8][64];
+        const struct ln_shortcut *al = qn ? ln_shortcuts_by_key(&app.shortcuts, LN_ALIAS, q) : NULL;
+        unsigned first = 0;
+        if (al && !strncmp(al->target, "command:", 8)) {
+            for (c = 0; c < sizeof commands / sizeof commands[0]; c++)
+                if (!strcmp(commands[c].title, al->target + 8)) {
+                    first = CMD_KEY | commands[c].id;
+                    for (i = 0; i < total && row[i].key != first; i++) ;
+                    if (i == total) {
+                        memset(&row[i], 0, sizeof row[i]);
+                        row[i].key = first; row[i].title = commands[c].title; row[i].subtitle = commands[c].subtitle; row[i].kind = "Command";
+                        total++;
+                    }
+                }
+        } else if (al) {
+            const struct ln_entry *ae = ln_index_find_path(app.index, al->target);
+            if (ae) {
+                first = ae->id;
+                for (i = 0; i < total && row[i].key != first; i++) ;
+                if (i == total) {
+                    memset(&row[i], 0, sizeof row[i]);
+                    row[i].key = first; row[i].title = ae->title; row[i].subtitle = alias_sub = drawer_of(ae->path); row[i].kind = "Program";
+                    total++;
+                }
+            }
+        }
+        for (i = 0; i < total; i++) {
+            char target[600];
+            const char *a1, *h1;
+            if (first && row[i].key == first) row[i].score = 1000000;
+            if (row[i].key >= CMD_KEY) snprintf(target, sizeof target, "command:%s", row[i].title);
+            else if (row[i].key < WIN_KEY) {
+                const struct ln_entry *pe = ln_index_find(app.index, row[i].key);
+                if (!pe) continue;
+                snprintf(target, sizeof target, "%s", pe->path);
+            } else continue;
+            a1 = ln_shortcuts_key_of(&app.shortcuts, LN_ALIAS, target);
+            h1 = ln_shortcuts_key_of(&app.shortcuts, LN_HOTKEY, target);
+            if (!a1 && !h1) continue;
+            snprintf(kinds[i], sizeof kinds[i], "%s, %.20s%s%.24s", row[i].kind, a1 ? a1 : h1, a1 && h1 ? ", " : "", a1 && h1 ? h1 : "");
+            row[i].kind = kinds[i];
+        }
+    }
     ln_results_answer(p->res, cur, LN_SRC_PROGRAMS, row, total);
     for (i = 0; i < n; i++) zt_free(sub[i]);
+    if (alias_sub) zt_free(alias_sub);
 
     /* packages that are not installed, by their name; installed ones are
        found as programs */
@@ -1285,6 +1544,8 @@ static int open_panel(const char *footer)
     snapshot_ports();
     app.confirm = 0;
     app.act = 0;
+    app.prompt = 0;
+    app.listing = 0;
     app.confirm_pkg = -1;
     if (app.pkgs_stale) { app.pkgs_stale = 0; ln_scan_packages(app.scan); }
     rates_refresh();
@@ -1500,9 +1761,27 @@ static void run_selected(void)
     APTR was;
     BPTR lock;
     int ok = 0;
+    if (app.prompt) { prompt_save(); return; }
     if (!row) return;
+    if (app.listing && row->source == LN_SRC_ACTIONS) {
+        /* one of the listed aliases or hotkeys: change or remove it */
+        int i = (int)(row->key & 0xfff);
+        if (i < app.shortcuts.n) {
+            char target[600], title[200];
+            int kind = app.shortcuts.v[i].kind;
+            snprintf(target, sizeof target, "%s", app.shortcuts.v[i].target);
+            snprintf(title, sizeof title, "%s", app.shortcuts.v[i].title[0] ? app.shortcuts.v[i].title : app.shortcuts.v[i].target);
+            prompt_begin(kind, target, title);
+        }
+        return;
+    }
     if (row->source == LN_SRC_ACTIONS) {
         unsigned id = row->key;
+        if (id == A_SET_ALIAS || id == A_SET_HOTKEY) {
+            char target[600];
+            if (act_target(target, sizeof target)) prompt_begin(id == A_SET_ALIAS ? LN_ALIAS : LN_HOTKEY, target, app.act_title);
+            return;
+        }
         if (id == A_DEFAULT) {
             actions_leave();
             run_selected();             /* the result itself, as Return on it */
@@ -1635,6 +1914,15 @@ static void run_selected(void)
             if (!ok) open_panel(said);
             return;
         }
+        if (id == CMD_SHORTCUTS) {
+            app.listing = 1;
+            ze_set_text(p->doc, "", 0);
+            query_changed();
+            snprintf(p->footer, sizeof p->footer, app.shortcuts.n ? "Return changes or removes one"
+                                                                  : "None yet: Tab on a program sets one");
+            show(p);
+            return;
+        }
         note("command %u", id);
         close_panel("command");
         if (id == CMD_SETTINGS) { app.want_prefs = 1; app.prefs_page = 0; }
@@ -1685,6 +1973,16 @@ static void panel_key(const struct IntuiMessage *im)
     p->caret_on = 1; p->ticks = 0;
     if ((app.confirm || app.confirm_pkg >= 0) && key != LN_K_RETURN) { app.confirm = 0; app.confirm_pkg = -1; p->footer[0] = 0; }
     /* Esc in the list of actions goes back to the results */
+    /* Esc in the prompt for an alias or hotkey goes back to where it was asked */
+    if (app.prompt && key == LN_K_ESC) {
+        app.prompt = 0;
+        ze_set_text(p->doc, "", 0);
+        query_changed();
+        p->footer[0] = 0;
+        p->dirty = 1;
+        return;
+    }
+    if (app.listing && key == LN_K_ESC) { app.listing = 0; ze_set_text(p->doc, "", 0); query_changed(); p->footer[0] = 0; p->dirty = 1; return; }
     if (app.act && key == LN_K_ESC) { actions_leave(); p->dirty = 1; return; }
     switch (ln_queryline_key(p->doc, key, mods, utf8, n, &o)) {
     case LN_ACT_NONE: return;
@@ -1694,6 +1992,7 @@ static void panel_key(const struct IntuiMessage *im)
     case LN_ACT_RUN: run_selected(); return;
     case LN_ACT_CLOSE: close_panel("esc"); return;
     case LN_ACT_ACTIONS:
+        if (app.prompt || app.listing) return;
         if (app.act) actions_leave(); else actions_enter();
         break;
     case LN_ACT_COPY: ln_clip_write(o.out, o.outn); return;
@@ -1902,6 +2201,8 @@ static int cx_events(void)
         if (type == CXM_IEVENT && id == EVT_HOTKEY) {
             note("hotkey");
             if (app.p.win) close_panel("hotkey"); else open_panel(NULL);
+        } else if (type == CXM_IEVENT && id >= EVT_SHORTCUT && id < EVT_SHORTCUT + LN_SHORTCUTS_MAX) {
+            hotkey_fired((int)(id - EVT_SHORTCUT));
         } else if (type == CXM_COMMAND) {
             switch (id) {
             case CXCMD_KILL: running = 0; break;
@@ -1980,6 +2281,16 @@ int main(int argc, char **argv)
         goto out;
     }
     ActivateCxObj(app.broker, TRUE);
+    /* aliases and hotkeys of results, kept beside the settings */
+    snprintf(app.shortcuts_path, sizeof app.shortcuts_path, "%s/shortcuts", app.dir);
+    {
+        size_t n;
+        char *text;
+        APTR was = quiet();
+        if ((text = read_file(app.shortcuts_path, &n))) { ln_shortcuts_parse(&app.shortcuts, text, n); free(text); }
+        loud(was);
+    }
+    hotkeys_register();
 
     /* Started from its icon for the first time, with its settings in the
        usual place: from now on it starts with the system. The switch is in
@@ -2056,6 +2367,7 @@ out:
     if (app.icons) ln_icons_free(app.icons);
     if (app.index) ln_index_free(app.index);
     ln_config_free(&app.cfg);
+    ln_shortcuts_free(&app.shortcuts);
     if (text) zt_layer_close();
     note("end");
     ArgArrayDone();

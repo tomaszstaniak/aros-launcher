@@ -129,6 +129,22 @@ then the command:
 Return sends it; the answer appears under the row.
 
 
+Aliases and hotkeys
+
+Select a program or one of the launcher's commands, press Tab and choose
+"Set Alias..." or "Set Hotkey...".
+
+  An alias is a short word. Typed whole, it puts that program first
+  ("wc" for WordCraft).
+  A hotkey starts the program from anywhere, without the panel. Type it
+  the way commodities write keys: ctrl alt w, lalt f5, ramiga t.
+
+Return keeps what you typed; Return with nothing typed removes it. The
+row of a program shows its alias and hotkey. "Aliases and Hotkeys" lists
+them all; Return on one changes or removes it. A command that asks
+before it acts (Restart, Shut Down) opens the panel instead of acting.
+
+
 Settings
 
 Type "settings" and press Return on "Launcher Settings". Tabs: Programs
