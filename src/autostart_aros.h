@@ -11,8 +11,11 @@
 
 #include <stddef.h>
 
-/* The full path of the running program into out. 0 when it cannot be told. */
-int ln_program_path(int argc, char **argv, char *out, size_t cap);
+struct WBStartup;
+
+/* The full path of the running program into out; wb is the Workbench's
+ * start message, NULL when started from a Shell. 0 when it cannot be told. */
+int ln_program_path(const struct WBStartup *wb, char *out, size_t cap);
 /* 1 when a start icon is there (whichever program it starts). */
 int ln_autostart_on(void);
 /* Writes the start icon for program, or removes it. 1 done. */

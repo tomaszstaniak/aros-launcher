@@ -22,14 +22,13 @@ static APTR quiet(void)
 }
 static void loud(APTR was) { ((struct Process *)FindTask(NULL))->pr_WindowPtr = was; }
 
-int ln_program_path(int argc, char **argv, char *out, size_t cap)
+int ln_program_path(const struct WBStartup *wb, char *out, size_t cap)
 {
     BPTR dir;
     const char *name;
     char progname[256];
-    if (argc == 0) {
-        struct WBStartup *wb = (struct WBStartup *)argv;
-        if (!wb || wb->sm_NumArgs < 1) return 0;
+    if (wb) {
+        if (wb->sm_NumArgs < 1) return 0;
         dir = wb->sm_ArgList[0].wa_Lock;
         name = (const char *)wb->sm_ArgList[0].wa_Name;
     } else {

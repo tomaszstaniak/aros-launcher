@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <aros/startup.h>
 #include <clib/alib_protos.h>
 #include <dos/dos.h>
 #include <dos/dosextens.h>
@@ -692,7 +693,9 @@ static int cx_events(void)
 
 int main(int argc, char **argv)
 {
-    UBYTE **args = ArgArrayInit(argc, (UBYTE **)argv);
+    /* started from Workbench: its message has the icon the ToolTypes are in */
+    struct WBStartup *wb = WBenchMsg;
+    UBYTE **args = wb ? ArgArrayInit(0, (UBYTE **)wb) : ArgArrayInit(argc, (UBYTE **)argv);
     const char *key = (const char *)ArgString(args, (UBYTE *)"CX_POPKEY", (UBYTE *)"ctrl alt space");
     const char *popup = (const char *)ArgString(args, (UBYTE *)"CX_POPUP", (UBYTE *)"NO");
     const char *logname = (const char *)ArgString(args, (UBYTE *)"LOG", (UBYTE *)"");
@@ -714,8 +717,8 @@ int main(int argc, char **argv)
     if (!(app.index = ln_index_new()) || !(app.icons = ln_icons_new())) goto out;
     if (!(app.cxport = CreateMsgPort()) || !(app.scanport = CreateMsgPort())) goto out;
     load_settings();
-    if (!ln_program_path(argc, argv, app.program, sizeof app.program)) app.program[0] = 0;
-    note("program '%s'", app.program);
+    if (!ln_program_path(wb, app.program, sizeof app.program)) app.program[0] = 0;
+    note("program '%s' workbench=%d", app.program, wb != NULL);
 
     memset(&nb, 0, sizeof nb);
     nb.nb_Version = NB_VERSION;
@@ -746,7 +749,7 @@ int main(int argc, char **argv)
     /* Started from its icon for the first time, with its settings in the
        usual place: from now on it starts with the system. The switch is in
        the settings. */
-    if (app.cfg.autostart < 0 && argc == 0 && app.program[0] && !strcmp(app.dir, "ENVARC:Launcher")) {
+    if (app.cfg.autostart < 0 && wb && app.program[0] && !strcmp(app.dir, "ENVARC:Launcher")) {
         app.cfg.autostart = ln_autostart_on() || ln_autostart_set(1, app.program);
         save_config();
         note("first start: autostart=%d", app.cfg.autostart);
