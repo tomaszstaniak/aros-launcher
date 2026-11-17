@@ -32,6 +32,9 @@
 #include <proto/graphics.h>
 #include <proto/intuition.h>
 #include <proto/locale.h>
+#include <proto/rexxsyslib.h>
+#include <rexx/errors.h>
+#include <rexx/storage.h>
 #include <proto/workbench.h>
 
 #include "autostart_aros.h"
@@ -123,6 +126,11 @@ static struct {
     struct ln_fileindex *files, *files_next;
     char files_path[272];
     char act_path[600];     /* the path the actions of a program or file work on */
+    /* ARexx: the launcher's own port, and the port answers to what it sent come to */
+    struct MsgPort *rexxport, *rexxreply;
+    int rexx_out;           /* commands sent and not answered yet */
+    char rexx_said[200];    /* the last answer, for the card */
+    char rexx_to[160];      /* "PORT command" it answers */
     /* the Weather widget, when one is found (the launcher's own, or Dockbar's) */
     char wx_root[512], wx_provider[600], wx_request[128];
     unsigned long wx_generation;
@@ -376,6 +384,142 @@ static void rates_answer(void)
     remove(done);
     remove(app.rates_request);
     loud(was);
+}
+
+/* --- ARexx ----------------------------------------------------------------- */
+
+#define REXX_PORT "LAUNCHER"
+
+/* Opened at start; without it the launcher has no ARexx port and sends nothing. */
+struct RxsLib *RexxSysBase;
+
+/* The public ports there were when the panel was called, to choose from
+ * after "rx ". Not every port speaks ARexx; the names are all we can know. */
+#define PORTS_MAX 80
+static char port_names[PORTS_MAX][48];
+static int port_count;
+
+static void snapshot_ports(void)
+{
+    struct Node *n;
+    port_count = 0;
+    Forbid();
+    for (n = SysBase->PortList.lh_Head; n->ln_Succ && port_count < PORTS_MAX; n = n->ln_Succ) {
+        if (!n->ln_Name || !n->ln_Name[0] || strlen(n->ln_Name) >= sizeof port_names[0]) continue;
+        strcpy(port_names[port_count++], n->ln_Name);
+    }
+    Permit();
+}
+
+/* "rx PORT command": the port (as typed) and the command; 0 when the query
+ * is not that. *cmd is "" while only the port is typed. */
+static int rexx_query(const char *q, size_t qn, char *port, size_t cap, const char **cmd)
+{
+    size_t i = 3, k = 0;
+    if (qn < 3 || (q[0] | 32) != 'r' || (q[1] | 32) != 'x' || q[2] != ' ') return 0;
+    while (i < qn && q[i] == ' ') i++;
+    while (i < qn && q[i] != ' ' && k + 1 < cap) port[k++] = q[i++];
+    port[k] = 0;
+    while (i < qn && q[i] == ' ') i++;
+    *cmd = q + i;
+    return 1;
+}
+
+/* Sends a command to a port; the answer comes to rexxreply later. */
+static int rexx_send(const char *port, const char *command)
+{
+    struct RexxMsg *m;
+    struct MsgPort *to;
+    size_t k = 0;
+    char *local;
+    int sent = 0;
+    if (!RexxSysBase || !(local = zt_local_copy(command, strlen(command), &k))) return 0;
+    if ((m = CreateRexxMsg(app.rexxreply, NULL, NULL))) {
+        if ((m->rm_Args[0] = (IPTR)CreateArgstring((STRPTR)local, (ULONG)k))) {
+            m->rm_Action = RXCOMM | RXFF_RESULT;
+            Forbid();
+            if ((to = FindPort((CONST_STRPTR)port))) { PutMsg(to, &m->rm_Node); sent = 1; }
+            Permit();
+            if (!sent) DeleteArgstring((STRPTR)m->rm_Args[0]);
+        }
+        if (!sent) DeleteRexxMsg(m);
+    }
+    zt_free(local);
+    if (sent) {
+        app.rexx_out++;
+        snprintf(app.rexx_to, sizeof app.rexx_to, "%.40s %.100s", port, command);
+        snprintf(app.rexx_said, sizeof app.rexx_said, "waiting...");
+    }
+    return sent;
+}
+
+/* Answers to commands the launcher sent. 1 when one came. */
+static int rexx_replies(void)
+{
+    struct RexxMsg *m;
+    int any = 0;
+    while ((m = (struct RexxMsg *)GetMsg(app.rexxreply))) {
+        if (m->rm_Result1 == 0 && m->rm_Result2) {
+            char *shown = zt_path_from_dos((const char *)m->rm_Result2);
+            snprintf(app.rexx_said, sizeof app.rexx_said, "%.190s", shown && *shown ? shown : "done");
+            if (shown) zt_free(shown);
+            DeleteArgstring((STRPTR)m->rm_Result2);
+        } else if (m->rm_Result1 == 0) {
+            snprintf(app.rexx_said, sizeof app.rexx_said, "done");
+        } else {
+            snprintf(app.rexx_said, sizeof app.rexx_said, "refused, return code %ld", (long)m->rm_Result1);
+        }
+        note("rexx answer to '%s': %s", app.rexx_to, app.rexx_said);
+        DeleteArgstring((STRPTR)m->rm_Args[0]);
+        DeleteRexxMsg(m);
+        app.rexx_out--;
+        any = 1;
+    }
+    return any;
+}
+
+static int open_panel(const char *footer);
+static void close_panel(const char *why);
+static void query_changed(void);
+
+/* Commands other programs send to the launcher's port. Returns 0 when the
+ * launcher is to quit. */
+static int rexx_commands(void)
+{
+    struct RexxMsg *m;
+    int running = 1;
+    while ((m = (struct RexxMsg *)GetMsg(app.rexxport))) {
+        const char *text = (const char *)m->rm_Args[0], *arg;
+        char word[16], answer[160];
+        size_t k = 0;
+        LONG rc = RC_OK;
+        answer[0] = 0;
+        if (!IsRexxMsg(m) || !text) { m->rm_Result1 = RC_ERROR; m->rm_Result2 = 0; ReplyMsg(&m->rm_Node); continue; }
+        while (*text == ' ') text++;
+        while (text[k] && text[k] != ' ' && k + 1 < sizeof word) { word[k] = (char)(text[k] >= 'a' && text[k] <= 'z' ? text[k] - 32 : text[k]); k++; }
+        word[k] = 0;
+        arg = text + k;
+        while (*arg == ' ') arg++;
+        note("rexx command '%s'", text);
+        if (!strcmp(word, "SHOW")) {
+            if (open_panel(NULL) && *arg) {
+                char *utf = zt_path_from_dos(arg);
+                if (utf) { ze_set_text(app.p.doc, utf, strlen(utf)); zt_free(utf); query_changed(); app.p.dirty = 1; }
+            }
+        } else if (!strcmp(word, "HIDE")) close_panel("rexx");
+        else if (!strcmp(word, "TOGGLE")) { if (app.p.win) close_panel("rexx"); else open_panel(NULL); }
+        else if (!strcmp(word, "RESCAN")) { ln_scan_again(app.scan); ln_scan_files(app.scan); }
+        else if (!strcmp(word, "QUIT")) running = 0;
+        else if (!strcmp(word, "VERSION")) snprintf(answer, sizeof answer, "%s", version + 6);
+        else if (!strcmp(word, "HELP")) snprintf(answer, sizeof answer, "SHOW [text], HIDE, TOGGLE, RESCAN, VERSION, QUIT, HELP");
+        else rc = RC_ERROR;
+        m->rm_Result1 = rc;
+        m->rm_Result2 = 0;
+        if (rc == RC_OK && answer[0] && (m->rm_Action & RXFF_RESULT))
+            m->rm_Result2 = (IPTR)CreateArgstring((STRPTR)answer, (ULONG)strlen(answer));
+        ReplyMsg(&m->rm_Node);
+    }
+    return running;
 }
 
 /* --- the Weather widget --------------------------------------------------- */
@@ -796,6 +940,7 @@ static void answer(void)
         ln_results_answer(p->res, cur, LN_SRC_PROGRAMS, row, 0);
         ln_results_answer(p->res, cur, LN_SRC_PACKAGES, row, 0);
         ln_results_answer(p->res, cur, LN_SRC_FILES, row, 0);
+        ln_results_answer(p->res, cur, LN_SRC_REXX, row, 0);
         for (i = 0; a && a[i].id; i++) {
             if (!ln_match(q, qn, a[i].title, strlen(a[i].title), &row[total].m)) continue;
             row[total].key = a[i].id;
@@ -808,6 +953,53 @@ static void answer(void)
         return;
     }
     ln_results_answer(p->res, cur, LN_SRC_ACTIONS, row, 0);
+
+    /* "rx PORT command": the ports to choose from, then the command to send */
+    {
+        char port[48];
+        const char *cmd;
+        if (RexxSysBase && rexx_query(q, qn, port, sizeof port, &cmd)) {
+            static char titles[8][200];
+            int exact = -1, shown = 0;
+            ln_results_answer(p->res, cur, LN_SRC_SHELL, row, 0);
+            ln_results_answer(p->res, cur, LN_SRC_CALC, row, 0);
+            ln_results_answer(p->res, cur, LN_SRC_PROGRAMS, row, 0);
+            ln_results_answer(p->res, cur, LN_SRC_PACKAGES, row, 0);
+            ln_results_answer(p->res, cur, LN_SRC_FILES, row, 0);
+            for (i = 0; i < port_count; i++)
+                if (!strcmp(port_names[i], port)) exact = i;
+            if (exact >= 0 && *cmd) {
+                /* a whole port name and a command: one row, and what the port said last */
+                snprintf(titles[0], sizeof titles[0], "%.47s  %.140s", port, cmd);
+                row[0].key = (unsigned)exact;
+                row[0].title = titles[0];
+                {
+                    /* what the port answered, when this is the command that was sent */
+                    char sent[160];
+                    snprintf(sent, sizeof sent, "%.40s %.100s", port, cmd);
+                    row[0].subtitle = app.rexx_said[0] && !strcmp(app.rexx_to, sent) ? app.rexx_said : "Return sends this command to the port";
+                }
+                row[0].kind = "Send";
+                row[0].score = 1;
+                shown = 1;
+            } else {
+                size_t pl = strlen(port);
+                for (i = 0; i < port_count && shown < 8; i++) {
+                    if (pl && !ln_match(port, pl, port_names[i], strlen(port_names[i]), &row[shown].m)) continue;
+                    snprintf(titles[shown], sizeof titles[shown], "%.47s", port_names[i]);
+                    row[shown].key = 0x1000u | (unsigned)i;       /* a port to complete, not yet a command */
+                    row[shown].title = titles[shown];
+                    row[shown].subtitle = "Public port: Return puts its name in, then type the command";
+                    row[shown].kind = "Port";
+                    row[shown].score = pl ? row[shown].m.score : 100 - i;
+                    shown++;
+                }
+            }
+            ln_results_answer(p->res, cur, LN_SRC_REXX, row, shown);
+            return;
+        }
+        ln_results_answer(p->res, cur, LN_SRC_REXX, row, 0);
+    }
 
     /* "> command": only the Shell's row */
     if (qn && q[0] == '>') {
@@ -1065,6 +1257,7 @@ static int open_panel(const char *footer)
     p->style = ln_style_get(app.cfg.dark, app.cfg.compact);
     if (!open_fonts(p)) { note("open failed: fonts"); return 0; }
     snapshot_windows();
+    snapshot_ports();
     app.confirm = 0;
     app.act = 0;
     app.confirm_pkg = -1;
@@ -1316,6 +1509,29 @@ static void run_selected(void)
         ok = ln_clip_write(app.calc, strlen(app.calc));
         note("calc '%s' copied=%d", app.calc, ok);
         close_panel("copied");
+        return;
+    }
+    if (row->source == LN_SRC_REXX) {
+        char port[48], line[200];
+        const char *cmd;
+        size_t qn;
+        const char *q = ze_text(p->doc, &qn);
+        if (row->key & 0x1000u) {
+            /* a port chosen from the list: its name goes into the query */
+            int i = (int)(row->key & 0xfff);
+            if (i < port_count) {
+                snprintf(line, sizeof line, "rx %s ", port_names[i]);
+                ze_set_text(p->doc, line, strlen(line));
+                query_changed();
+                show(p);
+            }
+            return;
+        }
+        if (!rexx_query(q, qn, port, sizeof port, &cmd) || !*cmd) return;
+        if (!rexx_send(port, cmd)) snprintf(p->footer, sizeof p->footer, "The port %.60s is gone", port);
+        note("rexx sent to '%s': '%s'", port, cmd);
+        answer();
+        show(p);
         return;
     }
     if (row->source == LN_SRC_FILES) {
@@ -1617,7 +1833,18 @@ static void open_settings(void)
         if (!same) {
             /* other folders: a new scanner; programs of folders no longer
                searched leave the index */
-            if (app.scan) ln_scan_stop(app.scan);
+            if (app.rexxport) {
+        struct RexxMsg *m;
+        RemPort(app.rexxport);
+        while ((m = (struct RexxMsg *)GetMsg(app.rexxport))) { m->rm_Result1 = RC_FATAL; m->rm_Result2 = 0; ReplyMsg(&m->rm_Node); }
+        DeleteMsgPort(app.rexxport);
+    }
+    if (app.rexxreply) {
+        /* answers still on their way belong to messages we made: wait for them */
+        while (app.rexx_out > 0) { WaitPort(app.rexxreply); rexx_replies(); }
+        DeleteMsgPort(app.rexxreply);
+    }
+    if (app.scan) ln_scan_stop(app.scan);
             for (i = 0; i < n; i++)
                 if (before[i]) { ln_index_begin(app.index, before[i]); ln_index_end(app.index, before[i]); }
             app.scan = ln_scan_start(app.scanport, app.cfg.folder, app.cfg.folders, app.cfg.files, app.cfg.files_n, app.cfg.exclude, app.cfg.exclude_n);
@@ -1678,7 +1905,16 @@ int main(int argc, char **argv)
     if (zt_layer_open() != ZT_OK) { PutStr((CONST_STRPTR)"Launcher: the text layer could not start\n"); goto out; }
     text = 1;
     if (!(app.index = ln_index_new()) || !(app.icons = ln_icons_new())) goto out;
-    if (!(app.cxport = CreateMsgPort()) || !(app.scanport = CreateMsgPort())) goto out;
+    if (!(app.cxport = CreateMsgPort()) || !(app.scanport = CreateMsgPort()) || !(app.rexxreply = CreateMsgPort())) goto out;
+    /* the launcher's ARexx port: public, under a name others can send to */
+    RexxSysBase = (struct RxsLib *)OpenLibrary((CONST_STRPTR)"rexxsyslib.library", 0);
+    Forbid();
+    if (RexxSysBase && !FindPort((CONST_STRPTR)REXX_PORT) && (app.rexxport = CreateMsgPort())) {
+        app.rexxport->mp_Node.ln_Name = (char *)REXX_PORT;
+        app.rexxport->mp_Node.ln_Pri = 0;
+        AddPort(app.rexxport);
+    }
+    Permit();
     load_settings();
     if (!ln_program_path(wb, app.program, sizeof app.program)) app.program[0] = 0;
     note("program '%s' workbench=%d", app.program, wb != NULL);
@@ -1738,7 +1974,8 @@ int main(int argc, char **argv)
 
     while (running) {
         ULONG winsig = app.p.win ? 1UL << app.p.win->UserPort->mp_SigBit : 0;
-        ULONG mask = 1UL << app.cxport->mp_SigBit | 1UL << app.scanport->mp_SigBit | winsig | SIGBREAKF_CTRL_C, got;
+        ULONG rexxsig = (app.rexxport ? 1UL << app.rexxport->mp_SigBit : 0) | 1UL << app.rexxreply->mp_SigBit;
+        ULONG mask = 1UL << app.cxport->mp_SigBit | 1UL << app.scanport->mp_SigBit | winsig | rexxsig | SIGBREAKF_CTRL_C, got;
         /* icons are read while nothing else asks for attention */
         if (app.p.win && ln_icons_wanted(app.icons)) {
             APTR was = quiet();
@@ -1754,6 +1991,8 @@ int main(int argc, char **argv)
         if (got & SIGBREAKF_CTRL_C) running = 0;
         panel_events();
         scan_events();
+        if (app.rexxport && !rexx_commands()) running = 0;
+        if (rexx_replies() && app.p.win) { answer(); show(&app.p); }
         if (!cx_events() || app.quit) running = 0;
         if (app.want_prefs && running) { app.want_prefs = 0; open_settings(); }
     }
@@ -1766,6 +2005,7 @@ out:
         while ((m = GetMsg(app.cxport))) ReplyMsg(m);
         DeleteMsgPort(app.cxport);
     }
+    if (RexxSysBase) CloseLibrary((struct Library *)RexxSysBase);
     if (app.scan) ln_scan_stop(app.scan);
     if (app.scanport) {
         struct ln_scan_msg *m;
