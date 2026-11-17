@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "fields": [
+    { "key": "from", "label": "From (currency code)", "type": "text", "default": "EUR", "maxLength": 3 },
+    { "key": "to", "label": "To (currency code)", "type": "text", "default": "USD", "maxLength": 3 },
+    { "key": "refreshMinutes", "label": "Refresh (minutes)", "type": "integer", "min": 60, "max": 720, "default": 360 }
+  ]
+}

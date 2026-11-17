@@ -4,8 +4,13 @@
  *   CurrencyProvider "<request file>"
  *
  * Operation "rates": fetches the European Central Bank's daily reference
- * rates and answers with one row per currency (label: its code, value: how
- * much of it one euro buys) and the fields "date" and "base". */
+ * rates and answers with
+ *   - one row per currency (label: its code, value: how much of it one euro
+ *     buys), for a host that converts by itself, and
+ *   - the fields "date" and "base", and for the pair named in the settings
+ *     ("from", "to", default EUR and USD) "pair" ("EUR/USD"), "rate" and
+ *     "summary" ("1 EUR = 1.1014 USD, ECB 2026-11-16"), for a host that
+ *     shows one number. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -47,6 +52,55 @@ static void find_package_ca(const struct ZkJson *j)
     byte = f ? fgetc(f) : EOF;
     if (f) fclose(f);
     if (byte != EOF) snprintf(zk_https_package_ca, sizeof zk_https_package_ca, "%s", path);
+}
+
+static double rate_of(const struct currency_rates *r, const char *code)
+{
+    int i;
+    if (!strcmp(code, "EUR")) return 1;
+    for (i = 0; i < r->n; i++)
+        if (!strcmp(r->code[i], code)) return r->rate[i];
+    return 0;
+}
+
+/* A currency code from the settings: three letters, upper case; the
+ * default when the setting is missing or is not one. */
+static void code_setting(const struct ZkJson *j, int settings, const char *key, const char *fallback, char out[4])
+{
+    char text[16];
+    int i, ok = settings >= 0 && zk_json_string(j, zk_json_get(j, settings, key), text, sizeof text) && strlen(text) == 3;
+    for (i = 0; ok && i < 3; i++) {
+        if (text[i] >= 'a' && text[i] <= 'z') text[i] = (char)(text[i] - 32);
+        if (text[i] < 'A' || text[i] > 'Z') ok = 0;
+    }
+    memcpy(out, ok ? text : fallback, 3);
+    out[3] = 0;
+}
+
+static void pair_fields(const struct ZkJson *j, const char *input, const struct currency_rates *rates, struct ZkWidgetSnapshot *reply)
+{
+    char from[4], to[4];
+    int settings = zk_json_get(j, 0, "settings"), n = reply->field_count;
+    double a, b;
+    (void)input;
+    code_setting(j, settings, "from", "EUR", from);
+    code_setting(j, settings, "to", "USD", to);
+    a = rate_of(rates, from);
+    b = rate_of(rates, to);
+    strcpy(reply->fields[n].key, "pair");
+    snprintf(reply->fields[n].text, sizeof reply->fields[n].text, "%s/%s", from, to);
+    n++;
+    strcpy(reply->fields[n].key, "rate");
+    strcpy(reply->fields[n + 1].key, "summary");
+    if (a > 0 && b > 0) {
+        /* as text, four significant digits: short enough for a dock tile */
+        snprintf(reply->fields[n].text, sizeof reply->fields[n].text, "%.4g", b / a);
+        snprintf(reply->fields[n + 1].text, sizeof reply->fields[n + 1].text, "1 %s = %.4f %s, ECB %s", from, b / a, to, rates->date);
+    } else {
+        strcpy(reply->fields[n].text, "--");
+        snprintf(reply->fields[n + 1].text, sizeof reply->fields[n + 1].text, "The bank lists no rate for %s", a > 0 ? to : from);
+    }
+    reply->field_count = n + 2;
 }
 
 int main(int argc, char **argv)
@@ -94,6 +148,7 @@ int main(int argc, char **argv)
             strcpy(reply->fields[1].key, "base");
             strcpy(reply->fields[1].text, "EUR");
             reply->field_count = 2;
+            pair_fields(j, input, rates, reply);
             for (i = 0; i < rates->n && i < ZW_ROWS; i++) {
                 snprintf(reply->rows[i].label, sizeof reply->rows[i].label, "%s", rates->code[i]);
                 snprintf(reply->rows[i].value, sizeof reply->rows[i].value, "%.6g", rates->rate[i]);

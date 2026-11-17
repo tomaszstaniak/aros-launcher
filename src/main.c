@@ -37,6 +37,7 @@
 #include "autostart_aros.h"
 #include "calc.h"
 #include "config.h"
+#include "dockbar/widgets.h"
 #include "convert.h"
 #include "draw.h"
 #include "icons_aros.h"
@@ -416,7 +417,7 @@ static const struct action package_actions[] = {
 };
 
 /* What the launcher itself can do, found by name like programs. */
-enum { CMD_SETTINGS = 1, CMD_RESCAN, CMD_QUIT, CMD_RESTART, CMD_SHUTDOWN };
+enum { CMD_SETTINGS = 1, CMD_RESCAN, CMD_QUIT, CMD_RESTART, CMD_SHUTDOWN, CMD_DOCKBAR };
 #define CMD_KEY 0xffff0000u         /* row keys of commands; program ids are far below */
 #define WIN_KEY 0xfffe0000u         /* row keys of open windows */
 static const struct { unsigned id; const char *title, *subtitle; } commands[] = {
@@ -425,7 +426,50 @@ static const struct { unsigned id; const char *title, *subtitle; } commands[] = 
     { CMD_QUIT, "Quit Launcher", "Stop the launcher until it is started again" },
     { CMD_RESTART, "Restart Computer", "Asks once more before it restarts" },
     { CMD_SHUTDOWN, "Shut Down Computer", "Asks once more before it switches off" },
+    { CMD_DOCKBAR, "Add Currency to Dockbar", "Install the Currency widget into the running Dockbar" },
 };
+
+/* Dockbar 0.6.0 and later take widget packages through a public port. */
+static int dockbar_there(void)
+{
+    int there;
+    Forbid();
+    there = FindPort((CONST_STRPTR)DOCKBAR_WIDGETS_PORT) != NULL;
+    Permit();
+    return there;
+}
+
+/* Hands the Currency widget to the running Dockbar; text gets what Dockbar
+ * said. 1 when it was installed or updated. */
+static int dockbar_install(char *text, size_t cap)
+{
+    struct MsgPort *reply = CreateMsgPort(), *port;
+    struct DockbarWidgetsMsg m;
+    int sent = 0;
+    snprintf(text, cap, "Dockbar is not running");
+    if (!reply) return 0;
+    memset(&m, 0, sizeof m);
+    m.msg.mn_Length = sizeof m;
+    m.msg.mn_ReplyPort = reply;
+    m.magic = DOCKBAR_WIDGETS_MAGIC;
+    m.version = DOCKBAR_WIDGETS_VERSION;
+    m.command = DOCKBAR_WIDGETS_INSTALL;
+    m.path = (CONST_STRPTR)app.widget_root;
+    m.flags = DOCKBAR_WIDGETS_OFFER_ADD;
+    Forbid();
+    if ((port = FindPort((CONST_STRPTR)DOCKBAR_WIDGETS_PORT))) { PutMsg(port, &m.msg); sent = 1; }
+    Permit();
+    if (sent) {
+        WaitPort(reply);
+        GetMsg(reply);
+        if (m.result == DOCKBAR_WIDGETS_OK || m.result == DOCKBAR_WIDGETS_UPDATED)
+            snprintf(text, cap, "Currency is in Dockbar: add it with Add widget");
+        else
+            snprintf(text, cap, "Dockbar: %.120s", m.text[0] ? m.text : "the widget was not installed");
+    }
+    DeleteMsgPort(reply);
+    return sent && (m.result == DOCKBAR_WIDGETS_OK || m.result == DOCKBAR_WIDGETS_UPDATED);
+}
 
 /* The windows that were open when the panel was called: what is shown
  * (copied under Intuition's lock) and the pointers as tokens. A token is
@@ -590,7 +634,8 @@ static void answer(void)
     }
     total = n;
     for (c = 0; qn && c < sizeof commands / sizeof commands[0]; c++)
-        if (ln_match(q, qn, commands[c].title, strlen(commands[c].title), &row[total].m)) {
+        if ((commands[c].id != CMD_DOCKBAR || (app.widget_root[0] && dockbar_there()))
+            && ln_match(q, qn, commands[c].title, strlen(commands[c].title), &row[total].m)) {
             row[total].key = CMD_KEY | commands[c].id;
             row[total].title = commands[c].title;
             row[total].subtitle = commands[c].subtitle;
@@ -1039,6 +1084,15 @@ static void run_selected(void)
             note("command %u confirmed", id);
             close_panel("command");
             ShutdownA(id == CMD_RESTART ? SD_ACTION_COLDREBOOT : SD_ACTION_POWEROFF);
+            return;
+        }
+        if (id == CMD_DOCKBAR) {
+            char said[160];
+            int ok;
+            close_panel("command");
+            ok = dockbar_install(said, sizeof said);
+            note("dockbar install ok=%d: %s", ok, said);
+            if (!ok) open_panel(said);
             return;
         }
         note("command %u", id);

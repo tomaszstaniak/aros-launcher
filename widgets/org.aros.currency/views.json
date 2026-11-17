@@ -1,0 +1,5 @@
+{
+  "schema": 1,
+  "compact": { "primary": "rate", "secondary": "pair", "tooltip": "summary" },
+  "expanded": { "component": "rows" }
+}

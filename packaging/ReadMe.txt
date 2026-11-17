@@ -55,6 +55,10 @@ Times use the time zone set in the system's locale settings.
 
 Currencies:   100 usd to pln     50 eur     20 gbp in chf
 
+The same widget works in Dockbar (0.6.0 or later): with Dockbar running,
+type "dockbar" and choose "Add Currency to Dockbar"; it shows one pair of
+currencies as a tile.
+
 Rates are the European Central Bank's daily reference rates. The Currency
 widget in the Widgets drawer fetches them over HTTPS at most twice a day
 (the network has to be running) and keeps the last ones for when there is

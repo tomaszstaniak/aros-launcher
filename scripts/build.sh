@@ -24,7 +24,7 @@ pmap="-ffile-prefix-map=$R=launcher -ffile-prefix-map=$ln_sdk=sdk -ffile-prefix-
 src=$(ls "$R"/src/*.c)
 # shellcheck disable=SC2086
 "$ln_cc" --sysroot="$ln_sdk" -std=gnu99 -O2 -Wall -Wextra -Werror -Wno-pointer-sign $pmap \
-  -DLN_TARGET=\"$ln_target\" -I"$R/src" -I"$ZK/src" -I"$ZK/third_party/utf8proc" -DUTF8PROC_STATIC -I"$ln_sdk/include/freetype" \
+  -DLN_TARGET=\"$ln_target\" -I"$R/src" -I"$R/include" -I"$ZK/src" -I"$ZK/third_party/utf8proc" -DUTF8PROC_STATIC -I"$ln_sdk/include/freetype" \
   $src "$ZK/src/zk_edit_core.c" "$ZK/src/zk_glass_core.c" "$ZK/src/zk_resample.c" "$ZK/src/zk_json.c" "$ZK/src/zk_widget_snapshot.c" "$ZK/src/zk_present.c" "$present" \
   -o "$ln_build/Launcher" "$ln_build/libzktext.a" "$ln_sdk/lib/libfreetype2.static.a" "$ln_sdk/lib/libpng_nostdio.a" "$ln_sdk/lib/libz.static.a" -lcybergraphics -lm
 "$ln_tc/$ln_prefix-strip" --strip-debug "$ln_build/Launcher"

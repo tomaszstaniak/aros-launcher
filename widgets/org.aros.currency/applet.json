@@ -6,13 +6,23 @@
   "description": "Euro foreign exchange reference rates of the European Central Bank, once a day.",
   "author": "aros-launcher contributors",
   "license": "MIT",
-  "api": { "min": 1, "max": 1 },
-  "hosts": [ "launcher" ],
-  "capabilities": [ "network.https" ],
+  "api": {
+    "min": 1,
+    "max": 1
+  },
+  "hosts": [
+    "launcher",
+    "dockbar"
+  ],
+  "capabilities": [
+    "network.https"
+  ],
+  "settings": "settings.json",
+  "views": "views.json",
+  "refreshOperation": "rates",
   "entryPoints": {
     "x86_64-abiv11": "bin/x86_64-abiv11/CurrencyProvider",
     "x86_64-v1": "bin/x86_64-v1/CurrencyProvider",
     "aarch64-raspi-v1": "bin/aarch64-raspi-v1/CurrencyProvider"
-  },
-  "refreshOperation": "rates"
+  }
 }
