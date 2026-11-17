@@ -23,6 +23,8 @@ Using it
                    WordCraft), case and accents do not matter
   Up, Down         choose a result (Page Up, Page Down move by eight)
   Return           start the chosen program
+  Tab              other actions for the chosen result (show in drawer,
+                   copy path, open a Shell there, ...); Esc goes back
   Esc              clear what was typed; Esc again closes the panel
   click            choose a result; double-click starts it; a click
                    outside the panel closes it
@@ -42,6 +44,15 @@ to the clipboard.
 
   2+2    (3+4)^2    10/4    7%3    2,5*2    0x1f+1
   sqrt(2)   sin(pi/2)   ln(e)   log(100)   abs(-3)   round(2.5)
+
+It also answers questions in words:
+
+  10 km to mi     72 f in c     5 ft     2.5 kg lb     100 mb to gb
+  15% of 200      200 + 15%     20% off 80
+  12pm in london  15:30 warsaw to new york   now in tokyo   tokyo time
+
+Times use the time zone set in the system's locale settings. Currencies
+are not there.
 
 
 Open windows
@@ -86,7 +97,7 @@ The hotkey is the CX_POPKEY ToolType of the Launcher icon.
 
 Not there yet
 
-- The Tab key (actions for a result) does nothing.
+- Currency conversion.
 
 
 What to look at, please

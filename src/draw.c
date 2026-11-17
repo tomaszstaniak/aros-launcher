@@ -152,6 +152,7 @@ const char *ln_source_name(int source)
     case LN_SRC_CALC: return "Calculator";
     case LN_SRC_PROGRAMS: return "Results";
     case LN_SRC_PACKAGES: return "Packages";
+    case LN_SRC_ACTIONS: return "Actions";
     default: return "";
     }
 }
@@ -370,11 +371,14 @@ int ln_draw_cached(unsigned char *argb, const struct ln_layout *l, const struct 
 
     fill(&c, l->px, l->footer_y, l->pw, 1, s->rule);
     left = v->footer ? v->footer : srow ? srow->title : "";
-    right_text(&c, f->small, !srow ? "Esc  Close" : srow->source == LN_SRC_CALC ? "Return  Copy     Esc  Close"
-               : srow->source == LN_SRC_SHELL ? "Return  Run     Esc  Close"
-               : srow->source == LN_SRC_PACKAGES ? "Return  Install     Esc  Close" : "Return  Open     Esc  Close",
+    right_text(&c, f->small, !srow ? "Esc  Close"
+               : srow->source == LN_SRC_ACTIONS ? "Return  Run     Esc  Back"
+               : srow->source == LN_SRC_CALC ? "Tab  Actions     Return  Copy     Esc  Close"
+               : srow->source == LN_SRC_SHELL ? "Tab  Actions     Return  Run     Esc  Close"
+               : srow->source == LN_SRC_PACKAGES ? "Tab  Actions     Return  Install     Esc  Close"
+               : "Tab  Actions     Return  Open     Esc  Close",
                l->px + l->pw - s->pad, l->footer_y + 1, s->footer_h, s->dim);
-    fitted(&c, f->small, left, l->px + s->pad, l->footer_y + 1, s->footer_h, l->px + l->pw - s->pad - 190,
+    fitted(&c, f->small, left, l->px + s->pad, l->footer_y + 1, s->footer_h, l->px + l->pw - s->pad - 300,
            v->footer ? s->text : s->dim, NULL, 0);
     free(c.cov);
     return 1;

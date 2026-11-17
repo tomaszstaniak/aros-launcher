@@ -30,11 +30,13 @@
 #include <proto/exec.h>
 #include <proto/graphics.h>
 #include <proto/intuition.h>
+#include <proto/locale.h>
 #include <proto/workbench.h>
 
 #include "autostart_aros.h"
 #include "calc.h"
 #include "config.h"
+#include "convert.h"
 #include "draw.h"
 #include "icons_aros.h"
 #include "index.h"
@@ -91,6 +93,12 @@ static struct {
     char dir[256], config[272], counts[272];
     char program[512];      /* this program's full path, "" when unknown */
     char calc[64];          /* the calculator's result on show */
+    char calc_left[64];     /* and what was asked, tidied */
+    int act;                /* showing the actions of one result */
+    int act_source;         /* that result: its source, key and title */
+    unsigned act_key;
+    char act_title[200];
+    char act_query[256];    /* the query to come back to */
     int quit, want_prefs;
     unsigned confirm;       /* a command waiting for a second Return */
     struct ln_pkglist pkgs; /* apkg's catalogue */
@@ -241,6 +249,50 @@ static char *drawer_of(const char *path)
     return shown;
 }
 
+/* The moment and place, for questions about time. */
+static void moment(struct ln_now *n)
+{
+    struct DateStamp ds;
+    struct Locale *loc = OpenLocale(NULL);
+    DateStamp(&ds);
+    n->days = ds.ds_Days + 2922;                    /* DateStamp counts from 1978 */
+    n->minute = (int)ds.ds_Minute;
+    n->utc_offset = loc ? -(int)loc->loc_GMTOffset : 0;     /* the locale counts minutes west of Greenwich */
+    if (loc) CloseLocale(loc);
+}
+
+/* The actions of a result, for Tab. The first is what Return does. */
+enum { A_DEFAULT = 1, A_SHOW_DRAWER, A_COPY_PATH, A_SHELL_HERE, A_SHOW_SCREEN, A_COPY_BOTH, A_COPY_TEXT };
+struct action { unsigned id; const char *title, *subtitle; };
+static const struct action program_actions[] = {
+    { A_DEFAULT, "Open", "Start the program" },
+    { A_SHOW_DRAWER, "Show in Drawer", "Open the drawer it is in" },
+    { A_COPY_PATH, "Copy Path", "Put its full path on the clipboard" },
+    { A_SHELL_HERE, "Open Shell Here", "A Shell in the program's drawer" },
+    { 0, NULL, NULL }
+};
+static const struct action window_actions[] = {
+    { A_DEFAULT, "Bring to Front", "Show and activate the window" },
+    { A_SHOW_SCREEN, "Show Its Screen", "Bring only the window's screen to the front" },
+    { 0, NULL, NULL }
+};
+static const struct action command_actions[] = { { A_DEFAULT, "Run", "Run the command" }, { 0, NULL, NULL } };
+static const struct action calc_actions[] = {
+    { A_DEFAULT, "Copy Result", "Put the answer on the clipboard" },
+    { A_COPY_BOTH, "Copy Question and Result", "Both, with an equals sign" },
+    { 0, NULL, NULL }
+};
+static const struct action shell_actions[] = {
+    { A_DEFAULT, "Run", "Run it as a Shell command" },
+    { A_COPY_TEXT, "Copy Command", "Put the command on the clipboard" },
+    { 0, NULL, NULL }
+};
+static const struct action package_actions[] = {
+    { A_DEFAULT, "Install", "Install the package" },
+    { A_COPY_TEXT, "Copy Name", "Put the package's name on the clipboard" },
+    { 0, NULL, NULL }
+};
+
 /* What the launcher itself can do, found by name like programs. */
 enum { CMD_SETTINGS = 1, CMD_RESCAN, CMD_QUIT, CMD_RESTART, CMD_SHUTDOWN };
 #define CMD_KEY 0xffff0000u         /* row keys of commands; program ids are far below */
@@ -322,6 +374,17 @@ static int show_window(int i)
     return 1;
 }
 
+static const struct action *actions_of(int source, unsigned key)
+{
+    switch (source) {
+    case LN_SRC_SHELL: return shell_actions;
+    case LN_SRC_CALC: return calc_actions;
+    case LN_SRC_PACKAGES: return package_actions;
+    case LN_SRC_PROGRAMS: return key >= CMD_KEY ? command_actions : key >= WIN_KEY ? window_actions : program_actions;
+    default: return NULL;
+    }
+}
+
 /* Answers the current query: the calculator's row, then one list of
  * programs and the launcher's own commands, best match first. Commands
  * and programs are ranked together, so that "quit" finds Quit Launcher
@@ -338,9 +401,29 @@ static void answer(void)
     unsigned cur = ln_results_current(p->res);
     int n, i, total;
 
-    /* "> command": only the Shell's row */
+    /* the actions of one result, narrowed by what is typed */
     memset(row, 0, sizeof row);
     total = 0;
+    if (app.act) {
+        const struct action *a = actions_of(app.act_source, app.act_key);
+        ln_results_answer(p->res, cur, LN_SRC_SHELL, row, 0);
+        ln_results_answer(p->res, cur, LN_SRC_CALC, row, 0);
+        ln_results_answer(p->res, cur, LN_SRC_PROGRAMS, row, 0);
+        ln_results_answer(p->res, cur, LN_SRC_PACKAGES, row, 0);
+        for (i = 0; a && a[i].id; i++) {
+            if (!ln_match(q, qn, a[i].title, strlen(a[i].title), &row[total].m)) continue;
+            row[total].key = a[i].id;
+            row[total].title = a[i].title;
+            row[total].subtitle = a[i].subtitle;
+            row[total].score = 100 - i + (qn ? row[total].m.score : 0);
+            total++;
+        }
+        ln_results_answer(p->res, cur, LN_SRC_ACTIONS, row, total);
+        return;
+    }
+    ln_results_answer(p->res, cur, LN_SRC_ACTIONS, row, 0);
+
+    /* "> command": only the Shell's row */
     if (qn && q[0] == '>') {
         const char *cmd = q + 1;
         while (*cmd == ' ') cmd++;
@@ -356,9 +439,17 @@ static void answer(void)
     }
     ln_results_answer(p->res, cur, LN_SRC_SHELL, row, 0);
 
-    if (ln_calc(q, qn, app.calc, sizeof app.calc)) {
-        row[0].key = 1; row[0].title = app.calc; row[0].subtitle = q; row[0].kind = "Result"; row[0].score = 1;
-        total = 1;
+    {
+        struct ln_now when;
+        moment(&when);
+        if (ln_convert(q, qn, &when, app.calc_left, sizeof app.calc_left, app.calc, sizeof app.calc)) {
+            row[0].key = 1; row[0].title = app.calc; row[0].subtitle = app.calc_left; row[0].kind = "Result"; row[0].score = 1;
+            total = 1;
+        } else if (ln_calc(q, qn, app.calc, sizeof app.calc)) {
+            snprintf(app.calc_left, sizeof app.calc_left, "%s", q);
+            row[0].key = 1; row[0].title = app.calc; row[0].subtitle = q; row[0].kind = "Result"; row[0].score = 1;
+            total = 1;
+        }
     }
     ln_results_answer(p->res, cur, LN_SRC_CALC, row, total);
 
@@ -545,6 +636,7 @@ static int open_panel(const char *footer)
     if (!open_fonts(p)) { note("open failed: fonts"); return 0; }
     snapshot_windows();
     app.confirm = 0;
+    app.act = 0;
     app.confirm_pkg = -1;
     if (app.pkgs_stale) { app.pkgs_stale = 0; ln_scan_packages(app.scan); }
     if (!(scr = pick_screen())) { note("open failed: no screen"); return 0; }
@@ -653,6 +745,96 @@ static void query_changed(void)
     note("query '%s' rows=%d", q, ln_results_count(p->res));
 }
 
+/* Tab: the actions of the selected result take the list's place. */
+static void actions_enter(void)
+{
+    struct panel *p = &app.p;
+    const struct ln_row *row = ln_results_row(p->res, ln_results_selected(p->res));
+    size_t n;
+    const char *q = ze_text(p->doc, &n);
+    if (!row || !actions_of(row->source, row->key)) return;
+    app.act = 1;
+    app.act_source = row->source;
+    app.act_key = row->key;
+    snprintf(app.act_title, sizeof app.act_title, "%s", row->title);
+    snprintf(app.act_query, sizeof app.act_query, "%s", q);
+    ze_set_text(p->doc, "", 0);
+    query_changed();
+    snprintf(p->footer, sizeof p->footer, "Actions for %.120s", app.act_title);
+}
+
+/* Back to the results, with the same result selected. */
+static void actions_leave(void)
+{
+    struct panel *p = &app.p;
+    int i, n;
+    app.act = 0;
+    ze_set_text(p->doc, app.act_query, strlen(app.act_query));
+    query_changed();
+    n = ln_results_count(p->res);
+    for (i = 0; i < n; i++) {
+        const struct ln_row *w = ln_results_row(p->res, i);
+        if (w->source == app.act_source && w->key == app.act_key) { ln_results_select(p->res, i); break; }
+    }
+}
+
+/* An action other than the result's own. */
+static void run_action(unsigned id)
+{
+    const struct ln_entry *e = app.act_source == LN_SRC_PROGRAMS && app.act_key < WIN_KEY ? ln_index_find(app.index, app.act_key) : NULL;
+    char drawer[512], text[200];
+    APTR was = quiet();
+    int ok = 0;
+    drawer[0] = 0;
+    if (e) {
+        size_t n = strlen(e->path);
+        while (n && e->path[n - 1] != '/' && e->path[n - 1] != ':') n--;
+        if (n > 1 && e->path[n - 1] == '/') n--;
+        if (n < sizeof drawer) { memcpy(drawer, e->path, n); drawer[n] = 0; }
+    }
+    switch (id) {
+    case A_SHOW_DRAWER:
+        ok = drawer[0] && OpenWorkbenchObjectA((STRPTR)drawer, NULL) != 0;
+        break;
+    case A_COPY_PATH:
+        if (e) {
+            char *shown = zt_path_from_dos(e->path);
+            ok = shown && ln_clip_write(shown, strlen(shown));
+            if (shown) zt_free(shown);
+        }
+        break;
+    case A_SHELL_HERE: {
+        BPTR lock = drawer[0] ? Lock((CONST_STRPTR)drawer, SHARED_LOCK) : 0;
+        if (lock) {
+            /* the new Shell takes the lock as its current drawer */
+            ok = SystemTags((CONST_STRPTR)"NewShell", SYS_Asynch, TRUE, SYS_Input, (IPTR)NULL, SYS_Output, (IPTR)NULL,
+                            NP_CurrentDir, (IPTR)lock, TAG_DONE) != -1;
+            if (!ok) UnLock(lock);
+        }
+        break;
+    }
+    case A_SHOW_SCREEN: {
+        int i = (int)(app.act_key & 0xffff);
+        struct Screen *sc, *found = NULL;
+        ULONG lock = LockIBase(0);
+        for (sc = IntuitionBase->FirstScreen; sc && i < win_count; sc = sc->NextScreen)
+            if (sc == wins[i].s) found = sc;
+        UnlockIBase(lock);
+        if (found) { ScreenToFront(found); ok = 1; }
+        break;
+    }
+    case A_COPY_BOTH:
+        snprintf(text, sizeof text, "%s = %s", app.calc_left, app.calc);
+        ok = ln_clip_write(text, strlen(text));
+        break;
+    case A_COPY_TEXT:
+        ok = ln_clip_write(app.act_title, strlen(app.act_title));
+        break;
+    }
+    loud(was);
+    note("action %u on '%s' ok=%d", id, app.act_title, ok);
+}
+
 /* Starts the selected program the Workbench way. */
 static void run_selected(void)
 {
@@ -664,6 +846,18 @@ static void run_selected(void)
     BPTR lock;
     int ok = 0;
     if (!row) return;
+    if (row->source == LN_SRC_ACTIONS) {
+        unsigned id = row->key;
+        if (id == A_DEFAULT) {
+            actions_leave();
+            run_selected();             /* the result itself, as Return on it */
+            return;
+        }
+        run_action(id);
+        app.act = 0;
+        close_panel("action");
+        return;
+    }
     if (row->source == LN_SRC_CALC) {
         ok = ln_clip_write(app.calc, strlen(app.calc));
         note("calc '%s' copied=%d", app.calc, ok);
@@ -772,6 +966,8 @@ static void panel_key(const struct IntuiMessage *im)
     if (!ln_keys_translate(im, &key, &mods, utf8, sizeof utf8, &n)) return;
     p->caret_on = 1; p->ticks = 0;
     if ((app.confirm || app.confirm_pkg >= 0) && key != LN_K_RETURN) { app.confirm = 0; app.confirm_pkg = -1; p->footer[0] = 0; }
+    /* Esc in the list of actions goes back to the results */
+    if (app.act && key == LN_K_ESC) { actions_leave(); p->dirty = 1; return; }
     switch (ln_queryline_key(p->doc, key, mods, utf8, n, &o)) {
     case LN_ACT_NONE: return;
     case LN_ACT_CARET: break;
@@ -779,7 +975,9 @@ static void panel_key(const struct IntuiMessage *im)
     case LN_ACT_MOVE: ln_results_move(p->res, o.delta); break;
     case LN_ACT_RUN: run_selected(); return;
     case LN_ACT_CLOSE: close_panel("esc"); return;
-    case LN_ACT_ACTIONS: return;                    /* actions come with the next stage */
+    case LN_ACT_ACTIONS:
+        if (app.act) actions_leave(); else actions_enter();
+        break;
     case LN_ACT_COPY: ln_clip_write(o.out, o.outn); return;
     case LN_ACT_CUT: ln_clip_write(o.out, o.outn); query_changed(); break;
     case LN_ACT_WANT_PASTE: {
