@@ -6,6 +6,8 @@
  *   CX_PRIORITY=<n>       default 0
  *   CX_POPUP=YES|NO       show the panel at start, default NO
  *   LOG=<file>            write what happens to a file (for tests)
+ *   SETTINGS=<drawer>     where settings and use counts are kept,
+ *                         default ENVARC:Launcher
  */
 #include <stdarg.h>
 #include <stdio.h>
@@ -46,7 +48,6 @@ static const char version[] __attribute__((used)) = "$VER: Launcher 0.1 (17.11.2
 #define SHADOW 28
 #define BLUR 10
 #define QUERY_ROWS 60
-#define CONFIG_DIR "ENVARC:Launcher"
 
 struct panel {
     struct Window *win;
@@ -76,6 +77,7 @@ static struct {
     BPTR log;
     struct panel p;
     int index_changed;
+    char dir[256], config[272], counts[272];
 } app;
 
 /* --- small things -------------------------------------------------------- */
@@ -146,8 +148,8 @@ static void save_counts(void)
     APTR was = quiet();
     BPTR dir;
     if (text) {
-        if ((dir = CreateDir((CONST_STRPTR)CONFIG_DIR))) UnLock(dir);
-        if (!write_file(CONFIG_DIR "/counts", text, n)) note("counts not saved");
+        if ((dir = CreateDir((CONST_STRPTR)app.dir))) UnLock(dir);
+        if (!write_file(app.counts, text, n)) note("counts not saved");
         free(text);
     }
     loud(was);
@@ -159,7 +161,9 @@ static void load_settings(void)
     char *text;
     APTR was = quiet();
     memset(&app.cfg, 0, sizeof app.cfg);
-    if ((text = read_file("ENV:Launcher/config", &n)) || (text = read_file(CONFIG_DIR "/config", &n))) {
+    app.cfg.dark = 1;
+    app.cfg.glass = 1;
+    if ((text = read_file(app.config, &n))) {
         ln_config_parse(&app.cfg, text, n);
         free(text);
     }
@@ -171,7 +175,7 @@ static void load_settings(void)
             ln_config_free(&d);
         }
     }
-    if ((text = read_file(CONFIG_DIR "/counts", &n))) {
+    if ((text = read_file(app.counts, &n))) {
         ln_index_load_counts(app.index, text, n);
         free(text);
     }
@@ -311,7 +315,7 @@ static int open_panel(const char *footer)
 {
     struct panel *p = &app.p;
     struct Screen *scr;
-    int compose, left, top, x, y;
+    int compose, left, top, y;
     if (p->win) return 1;
     p->style = ln_style_get(app.cfg.dark, app.cfg.compact);
     if (!open_fonts(p)) { note("open failed: fonts"); return 0; }
@@ -322,8 +326,11 @@ static int open_panel(const char *footer)
     ln_layout_max(p->style, p->shadow, &p->w, &p->h);
     left = (scr->Width - p->w) / 2;
     top = scr->Height / 5 - p->shadow;
+    /* the whole window, at its largest, stays on the screen: its picture
+       of the screen can only be taken there */
+    if (top + p->h > scr->Height) top = scr->Height - p->h;
     if (left < 0) left = 0;
-    if (top < scr->BarHeight + 1) top = scr->BarHeight + 1;
+    if (top < 0) top = 0;
     p->pic = malloc((size_t)p->w * (size_t)p->h * 4);
     p->under = malloc((size_t)p->w * (size_t)p->h * 4);
     p->glass = NULL;
@@ -347,7 +354,6 @@ static int open_panel(const char *footer)
             zk_glass_blur(p->glass, pw, ph, BLUR);
         }
     }
-    (void)x;
 
     if (!p->doc && !(p->doc = ze_new())) goto fail;
     if (!p->res && !(p->res = ln_results_new())) goto fail;
@@ -558,6 +564,7 @@ int main(int argc, char **argv)
     const char *key = (const char *)ArgString(args, (UBYTE *)"CX_POPKEY", (UBYTE *)"ctrl alt space");
     const char *popup = (const char *)ArgString(args, (UBYTE *)"CX_POPUP", (UBYTE *)"NO");
     const char *logname = (const char *)ArgString(args, (UBYTE *)"LOG", (UBYTE *)"");
+    const char *settings = (const char *)ArgString(args, (UBYTE *)"SETTINGS", (UBYTE *)"ENVARC:Launcher");
     LONG pri = ArgInt(args, (UBYTE *)"CX_PRIORITY", 0);
     struct NewBroker nb;
     CxObj *filter;
@@ -565,7 +572,10 @@ int main(int argc, char **argv)
     int rc = RETURN_FAIL, running = 1, text = 0;
 
     if (*logname) app.log = Open((CONST_STRPTR)logname, MODE_NEWFILE);
-    note("start key='%s'", key);
+    snprintf(app.dir, sizeof app.dir, "%s", settings);
+    snprintf(app.config, sizeof app.config, "%s/config", app.dir);
+    snprintf(app.counts, sizeof app.counts, "%s/counts", app.dir);
+    note("start key='%s' settings='%s'", key, app.dir);
     if (zt_layer_open() != ZT_OK) { PutStr((CONST_STRPTR)"Launcher: the text layer could not start\n"); goto out; }
     text = 1;
     if (!(app.index = ln_index_new())) goto out;
