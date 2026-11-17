@@ -91,6 +91,17 @@ System
 "Restart Computer" and "Shut Down Computer" ask for a second Return.
 
 
+Weather
+
+  weather warsaw      pogoda krakow
+
+Press Return to look the city up; the answer shows the temperature, the
+sky and today's low and high. It uses the Weather widget that comes with
+Dockbar (found when Dockbar runs, or where apkg installs Dockbar); without
+it the launcher says so. Weather data by Open-Meteo (CC BY 4.0). The city
+you type is sent to that service, nothing else.
+
+
 Settings
 
 Type "settings" and press Return on "Launcher Settings": the folders that

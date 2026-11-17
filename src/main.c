@@ -116,6 +116,20 @@ static struct {
     double rates_fetched;   /* when the rates in use were fetched, seconds; 0 none */
     double rates_asked;     /* when they were last asked for */
     struct ln_rates rates;
+    /* what the one provider on its way is for */
+    int job;
+    /* the Weather widget, when one is found (the launcher's own, or Dockbar's) */
+    char wx_root[512], wx_provider[600], wx_request[128];
+    unsigned long wx_generation;
+    struct {
+        char city[100];     /* as typed, lower case */
+        char place[160];    /* as the service names it */
+        char temp[48], line[160];
+        double lat, lon;
+        double fetched;
+        int state;          /* WX_NONE, WX_BUSY, WX_READY, WX_FAILED */
+        char error[160];
+    } wx;
 } app;
 
 /* --- small things -------------------------------------------------------- */
@@ -245,6 +259,9 @@ static void load_settings(void)
 
 /* --- the currency widget -------------------------------------------------- */
 
+/* what the one provider on its way is for */
+enum { JOB_NONE, JOB_RATES, JOB_WX_PLACE, JOB_WX_FORECAST };
+
 #ifndef LN_TARGET
 #define LN_TARGET "unknown"
 #endif
@@ -312,7 +329,7 @@ static void rates_refresh(void)
     char quoted[1100], command[1200];
     double now_s = (double)time(NULL);
     FILE *f;
-    if (!app.widget_provider[0] || !app.scan) return;
+    if (!app.widget_provider[0] || !app.scan || app.job != JOB_NONE) return;
     if (app.rates_fetched && now_s - app.rates_fetched < RATES_MAX_AGE) return;
     if (app.rates_asked && now_s - app.rates_asked < RATES_RETRY) return;
     if (!zk_json_quote(app.widget_root, quoted, sizeof quoted)) return;
@@ -324,6 +341,7 @@ static void rates_refresh(void)
     fclose(f);
     snprintf(command, sizeof command, "\"%s\" \"%s\"", app.widget_provider, app.rates_request);
     if (ln_scan_run(app.scan, command)) {
+        app.job = JOB_RATES;
         app.rates_asked = now_s;
         note("rates: asked (generation %lu)", app.rates_generation);
     } else {
@@ -353,6 +371,171 @@ static void rates_answer(void)
     remove(done);
     remove(app.rates_request);
     loud(was);
+}
+
+/* --- the Weather widget --------------------------------------------------- */
+
+enum { WX_NONE, WX_BUSY, WX_READY, WX_FAILED };
+#define WX_MAX_AGE (15.0 * 60)
+
+/* The Weather package: beside the launcher, in the running Dockbar's widget
+ * drawer, or where apkg installs Dockbar. */
+static void weather_find(void)
+{
+    static const char *const places[] = { "PROGDIR:Widgets/org.aros.weather", NULL, "SYS:Packages/dockbar/Widgets/org.aros.weather" };
+    char dock[320];
+    struct MsgPort *reply = CreateMsgPort(), *port;
+    struct DockbarWidgetsMsg m;
+    APTR was = quiet();
+    int i, sent = 0;
+    dock[0] = 0;
+    if (reply) {
+        memset(&m, 0, sizeof m);
+        m.msg.mn_Length = sizeof m;
+        m.msg.mn_ReplyPort = reply;
+        m.magic = DOCKBAR_WIDGETS_MAGIC;
+        m.version = DOCKBAR_WIDGETS_VERSION;
+        m.command = DOCKBAR_WIDGETS_QUERY;
+        Forbid();
+        if ((port = FindPort((CONST_STRPTR)DOCKBAR_WIDGETS_PORT))) { PutMsg(port, &m.msg); sent = 1; }
+        Permit();
+        if (sent) {
+            WaitPort(reply);
+            GetMsg(reply);
+            if (m.result == DOCKBAR_WIDGETS_OK && m.root[0]) {
+                snprintf(dock, sizeof dock, "%s", m.root);
+                if (!AddPart((STRPTR)dock, (CONST_STRPTR)"org.aros.weather", sizeof dock)) dock[0] = 0;
+            }
+        }
+        DeleteMsgPort(reply);
+    }
+    app.wx_root[0] = app.wx_provider[0] = 0;
+    for (i = 0; i < 3 && !app.wx_provider[0]; i++) {
+        const char *place = i == 1 ? dock : places[i];
+        BPTR lock;
+        if (!place || !*place || !(lock = Lock((CONST_STRPTR)place, SHARED_LOCK))) continue;
+        if (NameFromLock(lock, (STRPTR)app.wx_root, sizeof app.wx_root)) {
+            snprintf(app.wx_provider, sizeof app.wx_provider, "%s", app.wx_root);
+            if (!AddPart((STRPTR)app.wx_provider, (CONST_STRPTR)"bin/" LN_TARGET "/WeatherProvider", sizeof app.wx_provider))
+                app.wx_provider[0] = 0;
+        }
+        UnLock(lock);
+        if (app.wx_provider[0] && (lock = Lock((CONST_STRPTR)app.wx_provider, SHARED_LOCK))) UnLock(lock);
+        else app.wx_provider[0] = 0;
+    }
+    loud(was);
+}
+
+/* Writes a request for the Weather provider and starts it. */
+static int weather_ask(int job, const char *operation, const char *more)
+{
+    char quoted[1100], command[1200];
+    FILE *f;
+    if (app.job != JOB_NONE || !app.wx_provider[0] || !zk_json_quote(app.wx_root, quoted, sizeof quoted)) return 0;
+    app.wx_generation++;
+    snprintf(app.wx_request, sizeof app.wx_request, "T:Launcher-weather-%s-%lu.json", app.rates_session, app.wx_generation);
+    if (!(f = fopen(app.wx_request, "wb"))) return 0;
+    fprintf(f, "{\"api\":1,\"package\":\"org.aros.weather\",\"packageRoot\":%s,\"instance\":\"launcher\",\"session\":\"%s\","
+               "\"generation\":%lu,\"operation\":\"%s\",%s}\n", quoted, app.rates_session, app.wx_generation, operation, more);
+    fclose(f);
+    snprintf(command, sizeof command, "\"%s\" \"%s\"", app.wx_provider, app.wx_request);
+    if (!ln_scan_run(app.scan, command)) { remove(app.wx_request); return 0; }
+    app.job = job;
+    return 1;
+}
+
+/* Return on "weather <city>": look the city up, then its forecast. */
+static void weather_start(const char *city)
+{
+    char quoted[260], more[320];
+    if (!app.wx_provider[0]) weather_find();
+    snprintf(app.wx.city, sizeof app.wx.city, "%s", city);
+    app.wx.place[0] = app.wx.temp[0] = app.wx.line[0] = 0;
+    app.wx.state = WX_FAILED;
+    if (!app.wx_provider[0]) { snprintf(app.wx.error, sizeof app.wx.error, "The Weather widget is not installed (it comes with Dockbar)"); return; }
+    if (!zk_json_quote(city, quoted, sizeof quoted)) { snprintf(app.wx.error, sizeof app.wx.error, "That name is too long"); return; }
+    snprintf(more, sizeof more, "\"query\":%s,\"settings\":{}", quoted);
+    if (!weather_ask(JOB_WX_PLACE, "geocode", more)) { snprintf(app.wx.error, sizeof app.wx.error, "Busy; try again in a moment"); return; }
+    app.wx.state = WX_BUSY;
+    note("weather: looking up '%s'", city);
+}
+
+/* The Weather provider has ended. */
+static void weather_answer(int job)
+{
+    struct ZkWidgetSnapshot *snap = calloc(1, sizeof *snap);
+    char done[160], *text;
+    size_t n;
+    APTR was = quiet();
+    int ok = 0;
+    snprintf(done, sizeof done, "%s.done", app.wx_request);
+    text = read_file(done, &n);
+    app.wx.state = WX_FAILED;
+    snprintf(app.wx.error, sizeof app.wx.error, "The weather service gave no answer");
+    if (snap && text && zk_widget_snapshot_parse(text, n, snap) && !strcmp(snap->package, "org.aros.weather")
+        && snap->generation == app.wx_generation) {
+        if (snap->status != ZW_READY) {
+            snprintf(app.wx.error, sizeof app.wx.error, "%.150s", snap->message[0] ? snap->message : "The weather service failed");
+        } else if (job == JOB_WX_PLACE) {
+            /* rows: "Name, Country" and "lat,lon|timezone"; the first is the best match */
+            if (snap->row_count < 1 || sscanf(snap->rows[0].value, "%lf,%lf", &app.wx.lat, &app.wx.lon) != 2) {
+                snprintf(app.wx.error, sizeof app.wx.error, "No place of that name was found");
+            } else {
+                snprintf(app.wx.place, sizeof app.wx.place, "%s", snap->rows[0].label);
+                ok = 1;
+            }
+        } else {
+            const char *t = zk_widget_field(snap, "temperature"), *d = zk_widget_field(snap, "description"), *r = zk_widget_field(snap, "range");
+            snprintf(app.wx.temp, sizeof app.wx.temp, "%s", t ? t : "--");
+            {
+                /* "6 C" as the provider writes it: with the degree sign */
+                size_t k = strlen(app.wx.temp);
+                if (k >= 2 && k + 3 < sizeof app.wx.temp && app.wx.temp[k - 2] == ' ' && (app.wx.temp[k - 1] == 'C' || app.wx.temp[k - 1] == 'F')) {
+                    char unit = app.wx.temp[k - 1];
+                    snprintf(app.wx.temp + k - 1, sizeof app.wx.temp - (k - 1), "\xc2\xb0%c", unit);
+                }
+            }
+            snprintf(app.wx.line, sizeof app.wx.line, "%.60s%s%.60s  (Open-Meteo)", d ? d : "", d && r ? ", " : "", r ? r : "");
+            app.wx.fetched = (double)time(NULL);
+            app.wx.state = WX_READY;
+        }
+    }
+    free(text);
+    free(snap);
+    remove(done);
+    remove(app.wx_request);
+    loud(was);
+    app.job = JOB_NONE;
+    if (job == JOB_WX_PLACE && ok) {
+        char quoted[340], more[520];
+        if (zk_json_quote(app.wx.place, quoted, sizeof quoted)) {
+            snprintf(more, sizeof more, "\"settings\":{\"schema\":1,\"location\":%s,\"latitude\":%.6f,\"longitude\":%.6f,"
+                     "\"temperatureUnit\":\"celsius\",\"windUnit\":\"kmh\"}", quoted, app.wx.lat, app.wx.lon);
+            if (weather_ask(JOB_WX_FORECAST, "forecast", more)) app.wx.state = WX_BUSY;
+        }
+    }
+    note("weather: state=%d place='%s' temp='%s' %s", app.wx.state, app.wx.place, app.wx.temp, app.wx.state == WX_FAILED ? app.wx.error : "");
+}
+
+/* "weather warsaw", "pogoda w krakowie": the city, lower case; 0 when the
+ * query is not such a question. */
+static int weather_query(const char *q, size_t qn, char *city, size_t cap)
+{
+    static const char *const words[] = { "weather in ", "weather ", "pogoda w ", "pogoda " };
+    size_t i, k, len;
+    for (i = 0; i < 4; i++) {
+        len = strlen(words[i]);
+        if (qn <= len) continue;
+        for (k = 0; k < len; k++) if ((q[k] | 32) != words[i][k] && q[k] != words[i][k]) break;
+        if (k < len) continue;
+        while (len < qn && q[len] == ' ') len++;
+        if (len >= qn || qn - len >= cap) return 0;
+        for (k = 0; k < qn - len; k++) city[k] = (char)(q[len + k] >= 'A' && q[len + k] <= 'Z' ? q[len + k] + 32 : q[len + k]);
+        while (k && city[k - 1] == ' ') k--;
+        city[k] = 0;
+        return k > 0;
+    }
+    return 0;
 }
 
 /* --- the rows ------------------------------------------------------------ */
@@ -607,8 +790,23 @@ static void answer(void)
 
     {
         struct ln_now when;
+        char city[100];
         moment(&when);
-        if (ln_convert(q, qn, &when, app.calc_left, sizeof app.calc_left, app.calc, sizeof app.calc)) {
+        if (weather_query(q, qn, city, sizeof city)) {
+            int mine = !strcmp(city, app.wx.city);
+            row[0].key = 2; row[0].score = 1;
+            if (mine && app.wx.state == WX_READY && (double)time(NULL) - app.wx.fetched < WX_MAX_AGE) {
+                snprintf(app.calc_left, sizeof app.calc_left, "%.60s", app.wx.place);
+                snprintf(app.calc, sizeof app.calc, "%.40s", app.wx.temp);
+                row[0].kind = app.wx.line;
+            } else {
+                snprintf(app.calc_left, sizeof app.calc_left, "%.60s", city);
+                snprintf(app.calc, sizeof app.calc, "%s", mine && app.wx.state == WX_BUSY ? "looking..." : "press Return");
+                row[0].kind = mine && app.wx.state == WX_FAILED ? app.wx.error : "Weather by Open-Meteo";
+            }
+            row[0].title = app.calc; row[0].subtitle = app.calc_left;
+            total = 1;
+        } else if (ln_convert(q, qn, &when, app.calc_left, sizeof app.calc_left, app.calc, sizeof app.calc)) {
             row[0].key = 1; row[0].title = app.calc; row[0].subtitle = app.calc_left; row[0].kind = ln_convert_note(); row[0].score = 1;
             total = 1;
         } else if (ln_calc(q, qn, app.calc, sizeof app.calc)) {
@@ -1026,6 +1224,23 @@ static void run_selected(void)
         close_panel("action");
         return;
     }
+    if (row->source == LN_SRC_CALC && row->key == 2) {
+        /* the weather card: fetch, or copy what was fetched */
+        char city[100], text[400];
+        size_t qn;
+        const char *q = ze_text(p->doc, &qn);
+        if (!weather_query(q, qn, city, sizeof city)) return;
+        if (!strcmp(city, app.wx.city) && app.wx.state == WX_READY) {
+            snprintf(text, sizeof text, "%.159s: %.47s, %.159s", app.wx.place, app.wx.temp, app.wx.line);
+            ln_clip_write(text, strlen(text));
+            close_panel("copied");
+            return;
+        }
+        if (strcmp(city, app.wx.city) || app.wx.state != WX_BUSY) weather_start(city);
+        answer();
+        show(p);
+        return;
+    }
     if (row->source == LN_SRC_CALC) {
         ok = ln_clip_write(app.calc, strlen(app.calc));
         note("calc '%s' copied=%d", app.calc, ok);
@@ -1219,10 +1434,13 @@ static void scan_events(void)
             app.index_changed = 1;
             note("scanned '%s' programs=%d", m->path, ln_index_count(app.index));
             break;
-        case LN_SCAN_RAN:
-            rates_answer();
+        case LN_SCAN_RAN: {
+            int job = app.job;
+            if (job == JOB_RATES) { rates_answer(); app.job = JOB_NONE; }
+            else if (job == JOB_WX_PLACE || job == JOB_WX_FORECAST) weather_answer(job);
             app.index_changed = 1;
             break;
+        }
         case LN_SCAN_PACKAGES: {
             size_t n;
             char *text = read_file(LN_PACKAGES_FILE, &n);

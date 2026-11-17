@@ -167,8 +167,9 @@ static void entry(void)
         if (got & (SIGBREAKF_CTRL_E | SIGBREAKF_CTRL_F)) packages(s);
         if ((got & SIGBREAKF_CTRL_D) && s->busy) {
             SystemTags((CONST_STRPTR)s->command, SYS_Input, (IPTR)NULL, SYS_Output, (IPTR)NULL, TAG_DONE);
-            send(s, LN_SCAN_RAN, s->command, NULL);
+            /* free for the next command before the main task hears of this one */
             s->busy = 0;
+            send(s, LN_SCAN_RAN, s->command, NULL);
         }
         if (port) {
             /* a copy into a folder sends many notes: wait for them to stop */
