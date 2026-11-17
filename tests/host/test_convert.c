@@ -109,8 +109,11 @@ int main(void)
     assert(!ln_convert("12pm in london", 14, NULL, l, sizeof l, r, sizeof r));
     assert(ln_convert("10 km", 5, NULL, l, sizeof l, r, sizeof r));
 
-    /* currencies: none without rates; with them, through the euro */
-    assert(none("100 usd to pln"));
+    /* currencies: without rates the question is recognised and says so */
+    assert(is("100 usd to pln", "100 USD", "no rates yet"));
+    assert(!strcmp(ln_convert_note(), "fetched when the network is running"));
+    assert(none("100 xyz to pln"));
+    assert(none("100 clocks"));
     {
         static struct ln_rates rates = { "2026-11-16", 4, { "USD", "PLN", "GBP", "JPY" }, { 1.25, 4.0, 0.8, 160.0 } };
         ln_convert_use_rates(&rates);
@@ -130,7 +133,7 @@ int main(void)
         assert(is("10 km to mi", "10 km", "6.21371 mi"));
         assert(!strcmp(ln_convert_note(), ""));
         ln_convert_use_rates(NULL);
-        assert(none("100 usd to pln"));
+        assert(is("100 usd to pln", "100 USD", "no rates yet"));
     }
 
     /* not questions */

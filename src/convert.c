@@ -485,6 +485,10 @@ static int currency(const char *word, size_t wn, char code[4], double *per_euro)
     if (!strcmp(code, "EUR")) { *per_euro = 1; return 1; }
     for (k = 0; rates && k < rates->n; k++)
         if (!strcmp(rates->code[k], code)) { *per_euro = rates->rate[k]; return 1; }
+    /* without rates: the currencies the bank lists are still recognised, so
+       that the question can be answered with "no rates yet" */
+    if (!rates && strstr(" USD JPY CZK DKK GBP HUF PLN RON SEK CHF ISK NOK TRY AUD BRL CAD CNY HKD IDR ILS INR KRW MXN MYR NZD PHP SGD THB ZAR BGN ", code)
+        && strlen(code) == 3) { *per_euro = 0; return 1; }
     return 0;
 }
 
@@ -494,7 +498,7 @@ static int money_question(const char *t, char *left, size_t lcap, char *right, s
     char from[4], to[4];
     double v, rf, rt, out;
     size_t len;
-    if (!rates || !number(&p, &v) || v < 0) return 0;
+    if (!number(&p, &v) || v < 0) return 0;
     while (*p == ' ') p++;
     if (!*p) return 0;
     /* the source currency: the longest run of words that names one */
@@ -514,9 +518,14 @@ static int money_question(const char *t, char *left, size_t lcap, char *right, s
     } else if (!currency(strcmp(from, "EUR") ? "eur" : "usd", 3, to, &rt)) {
         return 0;
     }
-    out = v / rf * rt;
     if (v == floor(v)) snprintf(left, lcap, "%.0f %s", v, from);
     else snprintf(left, lcap, "%.2f %s", v, from);
+    if (!rates) {
+        snprintf(right, rcap, "no rates yet");
+        snprintf(note, sizeof note, "fetched when the network is running");
+        return 1;
+    }
+    out = v / rf * rt;
     snprintf(right, rcap, "%.2f %s", out, to);
     snprintf(note, sizeof note, "ECB rates of %s", rates->date);
     return 1;
