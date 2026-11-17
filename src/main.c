@@ -264,8 +264,11 @@ static const struct { unsigned id; const char *title, *subtitle; } commands[] = 
     { CMD_QUIT, "Quit Launcher", "Stop the launcher until it is started again" },
 };
 
-/* The calculator's row and the launcher's own commands for the query. */
-static void answer_others(void)
+/* The calculator's row (first is 1) or the launcher's own commands for the
+ * query. The calculator answers before the programs and the commands after
+ * them: the selection starts on the first source that has a row, and that
+ * should be the one at the top. */
+static void answer_others(int first)
 {
     struct panel *p = &app.p;
     struct ln_row row[4];
@@ -274,13 +277,14 @@ static void answer_others(void)
     unsigned cur = ln_results_current(p->res);
     int n = 0;
     memset(row, 0, sizeof row);
-    if (ln_calc(q, qn, app.calc, sizeof app.calc)) {
-        row[0].key = 1; row[0].title = app.calc; row[0].subtitle = q; row[0].kind = "Result"; row[0].score = 1;
-        n = 1;
+    if (first) {
+        if (ln_calc(q, qn, app.calc, sizeof app.calc)) {
+            row[0].key = 1; row[0].title = app.calc; row[0].subtitle = q; row[0].kind = "Result"; row[0].score = 1;
+            n = 1;
+        }
+        ln_results_answer(p->res, cur, LN_SRC_CALC, row, n);
+        return;
     }
-    ln_results_answer(p->res, cur, LN_SRC_CALC, row, n);
-    memset(row, 0, sizeof row);
-    n = 0;
     for (i = 0; qn && i < sizeof commands / sizeof commands[0]; i++)
         if (ln_match(q, qn, commands[i].title, strlen(commands[i].title), &row[n].m)) {
             row[n].key = commands[i].id; row[n].title = commands[i].title; row[n].subtitle = commands[i].subtitle;
@@ -446,8 +450,9 @@ static int open_panel(const char *footer)
     p->first = 0;
     p->caret_on = 1; p->ticks = 0; p->click_row = -1;
     snprintf(p->footer, sizeof p->footer, "%s", footer ? footer : "");
-    answer_others();
+    answer_others(1);
     answer();
+    answer_others(0);
     paint(p);
     if (p->pinned) p->region = zk_present_region(p->pic, p->w, p->h);
     {
@@ -485,8 +490,9 @@ static void query_changed(void)
     ln_results_query(p->res);
     p->first = 0;
     p->footer[0] = 0;
-    answer_others();
+    answer_others(1);
     answer();
+    answer_others(0);
     note("query '%s' rows=%d", q, ln_results_count(p->res));
 }
 

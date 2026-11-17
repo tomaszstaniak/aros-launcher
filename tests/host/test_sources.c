@@ -64,9 +64,9 @@ int main(void)
         assert(ln_calc("2+2", 3, value, sizeof value));
         w[0] = row(1, value, "2+2", "Result", 1);
         assert(ln_results_answer(r, q, LN_SRC_CALC, w, 1));
-        assert(ln_results_answer(r, q, LN_SRC_COMMANDS, w, 0));
         for (i = 0; i < 8; i++) w[i] = row((unsigned)i + 10, "Program", "SYS:Tools", "Program", 100 - i);
         assert(ln_results_answer(r, q, LN_SRC_PROGRAMS, w, 8));
+        assert(ln_results_answer(r, q, LN_SRC_COMMANDS, w, 0));
         assert(ln_results_count(r) == 9 && ln_results_row(r, 0)->source == LN_SRC_CALC);
         assert(ln_results_selected(r) == 0);        /* the calculator's row stays chosen */
         draw(s, r, &f, "2+2");
@@ -84,6 +84,16 @@ int main(void)
         assert(ln_results_answer(r, q, LN_SRC_COMMANDS, w, 1));
         assert(ln_results_count(r) == 10);
         draw(s, r, &f, "2+2");
+
+        /* no calculation: programs answer before commands, so the first
+           program is chosen, not the command below */
+        q = ln_results_query(r);
+        assert(ln_results_answer(r, q, LN_SRC_CALC, w, 0));
+        for (i = 0; i < 3; i++) w[i] = row((unsigned)i + 10, "Serial", "SYS:Prefs", "Program", 100 - i);
+        assert(ln_results_answer(r, q, LN_SRC_PROGRAMS, w, 3));
+        w[0] = row(1, "Launcher Settings", "Folders", "Command", 5);
+        assert(ln_results_answer(r, q, LN_SRC_COMMANDS, w, 1));
+        assert(ln_results_selected(r) == 0 && ln_results_row(r, 0)->source == LN_SRC_PROGRAMS);
 
         zt_font_close(f.query); zt_font_close(f.title); zt_font_close(f.small);
     }
