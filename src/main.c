@@ -194,6 +194,7 @@ static void load_settings(void)
     memset(&app.cfg, 0, sizeof app.cfg);
     app.cfg.dark = 1;
     app.cfg.glass = 1;
+    app.cfg.autostart = -1;
     if ((text = read_file(app.config, &n))) {
         ln_config_parse(&app.cfg, text, n);
         free(text);
