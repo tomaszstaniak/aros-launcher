@@ -1,11 +1,11 @@
 ---
 type: overview
-updated: 2026-11-17
+updated: 2026-11-18
 ---
 
 # Documentation
 
-A keyboard launcher for AROS. No release exists; installation and usage guides will be added with the first one.
+A keyboard launcher for AROS. The user's guide is [`packaging/ReadMe.txt`](../packaging/ReadMe.txt), shipped in every archive; the [home page](https://tomaszstaniak.github.io/aros-launcher/) shows it at work.
 
 - [Development](development.md): contributor setup, build, and verification.
 

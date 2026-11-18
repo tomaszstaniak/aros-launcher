@@ -7,7 +7,7 @@
 
 /* What the About page shows beside the fixed text. */
 struct ln_about {
-    const char *version;        /* "Launcher 0.2 (17.11.2026)" */
+    const char *version;        /* "Jumpstart 0.2 (17.11.2026)" */
     const char *hotkey;
     int programs, files, packages;
     const char *rates_date;     /* "" when there are none */

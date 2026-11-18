@@ -3,7 +3,7 @@
  *
  * Wanderer opens every icon in SYS:WBStartup. A project icon without a
  * file of its own is enough: its default tool is started from the tool's
- * own drawer. So the start icon is SYS:WBStartup/Launcher.info, a project
+ * own drawer. So the start icon is SYS:WBStartup/Jumpstart.info, a project
  * icon whose default tool is the full path of this program; the program
  * stays where it was installed and an update there is what starts next. */
 #ifndef LN_AUTOSTART_AROS_H

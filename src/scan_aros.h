@@ -12,7 +12,7 @@ enum { LN_SCAN_BEGIN = 1, LN_SCAN_PUT, LN_SCAN_END, LN_SCAN_EXIT, LN_SCAN_PACKAG
        LN_SCAN_FILES_BEGIN, LN_SCAN_FILES, LN_SCAN_FILES_END };
 
 /* Where the scanner leaves apkg's list of packages for the main task. */
-#define LN_PACKAGES_FILE "T:Launcher-packages.json"
+#define LN_PACKAGES_FILE "T:Jumpstart-packages.json"
 
 /* Sent to the main task's port; the receiver frees it with
  * ln_scan_free_msg. path and title are in the system's character set.

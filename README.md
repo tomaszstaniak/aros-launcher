@@ -1,14 +1,29 @@
-# aros-launcher
+# Jumpstart
 
-A keyboard launcher for AROS: a hotkey opens a search panel, a few typed letters find a program, an open window, a calculation, a system command or a package, and Return runs it.
+Jumpstart is a keyboard launcher for AROS. A hotkey opens a panel; a few typed letters find a program, a file, an open window, a calculation, a package or a clipboard entry, and Return acts on it.
 
-Nothing is implemented yet.
+[Home page with screenshots](https://tomaszstaniak.github.io/aros-launcher/) · [Releases](https://github.com/tomaszstaniak/aros-launcher/releases)
 
-## Start here
+## What it does
 
-- [Documentation](docs/README.md): installation, usage, and public guides.
-- [Development](docs/development.md): contributor setup, build, and tests.
+- Starts programs found by a few letters, in order or scattered; brings open windows to the front; opens files from folders you choose.
+- Answers calculations, unit and time-zone questions, currencies (European Central Bank rates) and the weather (through Dockbar's Weather widget).
+- Tab lists a result's actions, among them an alias or a hotkey of its own.
+- Keeps a clipboard history in memory, lists packages from [apkg](https://github.com/tomaszstaniak/arospkg), runs Shell commands, and has an ARexx port.
+- Reads colour themes in the format of [Limpet](https://github.com/tomaszstaniak/limpet); fifteen are included.
 
-## Project boundaries
+The user's guide is `packaging/ReadMe.txt`, which is also in every archive.
 
-Sources will live in `src/`, tests in `tests/`, build and packaging entry points in `scripts/` and `packaging/`. Intended targets: AROS x86_64 ABIv1, AROS x86_64 ABIv11 and AROS Raspberry Pi AArch64 ABIv1. None is built yet.
+## Install
+
+With apkg: `apkg install jumpstart`. Or download the archive for your system from the releases page, unpack it anywhere and double-click Jumpstart.
+
+Archives exist for x86_64 ABIv11 distributions, mainline AROS x86_64 (ABIv1) and the Raspberry Pi (AArch64, ABIv1). The binaries do not cross.
+
+## Build
+
+See [development](docs/development.md). The text layer and the frosted-glass panel come from [zunekit](https://github.com/tomaszstaniak/zunekit) at the commit named in `zunekit.pin`.
+
+## Licence
+
+MIT, see `LICENSE`. The Currency widget's provider links curl and OpenSSL; their licence texts are in `widgets/org.aros.currency/licenses`. The colour themes have their own licences, listed in `themes/THEME-LICENSES.txt`.

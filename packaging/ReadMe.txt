@@ -1,19 +1,19 @@
-Launcher @VERSION@ (@TARGET@)
+Jumpstart @VERSION@ (@TARGET@)
 
 A keyboard launcher for AROS. Press the hotkey, type a few letters of a
 program's name, press Return.
 
-This is an early build for testing. It is not a release.
+Home page: https://tomaszstaniak.github.io/aros-launcher/
 
 
 Starting it
 
-Double-click Launcher. Nothing appears: it waits in the background for its
+Double-click Jumpstart. Nothing appears: it waits in the background for its
 hotkey. The first time it is started from its icon it also sets itself up
 to start with the system (a start icon in SYS:WBStartup); this can be
 switched off in its settings.
 
-Starting Launcher again while it runs shows its panel.
+Starting Jumpstart again while it runs shows its panel.
 
 
 Using it
@@ -55,9 +55,8 @@ Times use the time zone set in the system's locale settings.
 
 Currencies:   100 usd to pln     50 eur     20 gbp in chf
 
-The same widget works in Dockbar (0.6.0 or later): with Dockbar running,
-type "dockbar" and choose "Add Currency to Dockbar"; it shows one pair of
-currencies as a tile.
+The same widget comes with Dockbar 0.7.0, where it shows the rates as a
+tile and a card.
 
 Rates are the European Central Bank's daily reference rates. The Currency
 widget in the Widgets drawer fetches them over HTTPS at most twice a day
@@ -115,16 +114,16 @@ and kept between starts; "Rescan Programs and Files" builds it again.
 
 ARexx
 
-The launcher has the port LAUNCHER with the commands SHOW [text], HIDE,
+The launcher has the port JUMPSTART with the commands SHOW [text], HIDE,
 TOGGLE, RESCAN, VERSION, QUIT and HELP. From a script:
 
-  address LAUNCHER 'SHOW calc'
+  address JUMPSTART 'SHOW calc'
 
 It can also send a command to another program: type "rx", a space, and
 choose one of the public ports listed (not every port understands ARexx),
 then the command:
 
-  rx LAUNCHER VERSION
+  rx JUMPSTART VERSION
 
 Return sends it; the answer appears under the row.
 
@@ -173,11 +172,11 @@ before it acts (Restart, Shut Down) opens the panel instead of acting.
 
 Settings
 
-Type "settings" and press Return on "Launcher Settings". Tabs: Programs
+Type "settings" and press Return on "Jumpstart Settings". Tabs: Programs
 (folders searched for programs), Files (folders indexed for files, and
 what is left out), Look (dark or light theme, compact rows, frosted
-glass), General (start with the system) and About. "About Launcher" opens
-the same window on its last tab. "Quit Launcher" and "Restart Computer"
+glass), General (start with the system) and About. "About Jumpstart" opens
+the same window on its last tab. "Quit Jumpstart" and "Restart Computer"
 are found the same way.
 
 Programs are files with a tool icon, and scripts with an icon of their own
@@ -186,30 +185,28 @@ drawers directly inside them. To begin with these are SYS:Tools,
 SYS:Utilities, SYS:System, SYS:Prefs and SYS:Packages (where apkg
 installs).
 
-The hotkey is the CX_POPKEY ToolType of the Launcher icon.
+The hotkey is the CX_POPKEY ToolType of the Jumpstart icon.
 
 
-Not there yet
+Removing it
 
-- Tell us what you miss.
+Before you delete the drawer or remove the package, switch off "Start with
+the system" in the settings (General), or delete Jumpstart.info from
+SYS:WBStartup yourself. Settings, aliases and use counts are in
+ENVARC:Jumpstart.
 
 
-What to look at, please
+Problems and wishes
 
-- Does the hotkey always bring the panel up, also while another program's
-  window is active or another screen is in front?
-- Can you type at once, without clicking? Do your keyboard's national
-  characters and dead keys arrive correctly?
-- Does the panel look right on your screen (size, colours, the blurred
-  background, the shadow, the corners)? A screenshot helps.
-- Does the right program start, and does the panel go away cleanly?
-- Anything that hangs, crashes or leaves marks on the screen.
+https://github.com/tomaszstaniak/aros-launcher/issues
 
 Please say which system you ran it on (distribution or nightly date, and
-the graphics driver).
+the graphics driver). A screenshot helps when something looks wrong.
 
 
 Licences
+
+Jumpstart is MIT-licensed (LICENSE).
 
 The Currency provider contains curl and OpenSSL (and, on some systems,
 Brotli, zlib and Zstandard); their licence texts are in

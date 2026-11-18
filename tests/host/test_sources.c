@@ -53,7 +53,7 @@ int main(void)
         /* "sett": no calculation, no program, one command */
         q = ln_results_query(r);
         assert(ln_results_answer(r, q, LN_SRC_CALC, w, 0));
-        w[0] = row(1, "Launcher Settings", "Folders, look, start with the system", "Command", 50);
+        w[0] = row(1, "Jumpstart Settings", "Folders, look, start with the system", "Command", 50);
         w[0].m.n = 4; w[0].m.pos[0] = 9; w[0].m.pos[1] = 10; w[0].m.pos[2] = 11; w[0].m.pos[3] = 12;
         assert(ln_results_answer(r, q, LN_SRC_PACKAGES, w, 1));
         assert(ln_results_answer(r, q, LN_SRC_PROGRAMS, w, 0));
@@ -82,7 +82,7 @@ int main(void)
         draw(s, r, &f, "2+2");
 
         /* all three sections at once */
-        w[0] = row(3, "Quit Launcher", "Stop the launcher until it is started again", "Command", 5);
+        w[0] = row(3, "Quit Jumpstart", "Stop the launcher until it is started again", "Command", 5);
         assert(ln_results_answer(r, q, LN_SRC_PACKAGES, w, 1));
         assert(ln_results_count(r) == 10);
         draw(s, r, &f, "2+2");
@@ -93,7 +93,7 @@ int main(void)
         assert(ln_results_answer(r, q, LN_SRC_CALC, w, 0));
         for (i = 0; i < 3; i++) w[i] = row((unsigned)i + 10, "Serial", "SYS:Prefs", "Program", 100 - i);
         assert(ln_results_answer(r, q, LN_SRC_PROGRAMS, w, 3));
-        w[0] = row(1, "Launcher Settings", "Folders", "Command", 5);
+        w[0] = row(1, "Jumpstart Settings", "Folders", "Command", 5);
         assert(ln_results_answer(r, q, LN_SRC_PACKAGES, w, 1));
         assert(ln_results_selected(r) == 0 && ln_results_row(r, 0)->source == LN_SRC_PROGRAMS);
 

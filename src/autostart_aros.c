@@ -11,7 +11,7 @@
 #include <proto/exec.h>
 #include <proto/icon.h>
 
-#define START_ICON "SYS:WBStartup/Launcher"
+#define START_ICON "SYS:WBStartup/Jumpstart"
 
 static APTR quiet(void)
 {

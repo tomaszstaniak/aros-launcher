@@ -2,22 +2,22 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Launcher: start anything on AROS from the keyboard</title>
-<meta name="description" content="A keyboard launcher for AROS. One hotkey opens a panel that starts programs, finds files and windows, calculates, converts currencies, installs packages and keeps your clipboard history.">
-<meta name="theme-color" content="#16191c"><meta property="og:title" content="Launcher for AROS"><meta property="og:description" content="Start anything on AROS from the keyboard: programs, files, windows, sums, currencies, packages, clipboard history."><meta property="og:type" content="website"><meta property="og:image" content="https://tomaszstaniak.github.io/aros-launcher/assets/hero.png">
+<title>Jumpstart: start anything on AROS from the keyboard</title>
+<meta name="description" content="Jumpstart is a keyboard launcher for AROS. One hotkey opens a panel that starts programs, finds files and windows, calculates, converts currencies, installs packages and keeps your clipboard history.">
+<meta name="theme-color" content="#16191c"><meta property="og:title" content="Jumpstart for AROS"><meta property="og:description" content="Start anything on AROS from the keyboard: programs, files, windows, sums, currencies, packages, clipboard history."><meta property="og:type" content="website"><meta property="og:image" content="https://tomaszstaniak.github.io/aros-launcher/assets/hero.png">
 <link rel="stylesheet" href="style.css?v=1">
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
-<header class="site-header wrap"><a href="#" class="brand"><span class="brand-key" aria-hidden="true">L</span>Launcher</a><nav aria-label="Main navigation"><a href="#find">Find</a><a href="#answers">Answers</a><a href="#keys">Actions</a><a href="#widgets">Widgets</a><a href="#themes">Themes</a><a href="#scripts">Scripting</a><a class="nav-get" href="#get">Get it</a></nav></header>
+<header class="site-header wrap"><a href="#" class="brand"><span class="brand-key" aria-hidden="true">J</span>Jumpstart</a><nav aria-label="Main navigation"><a href="#find">Find</a><a href="#answers">Answers</a><a href="#keys">Actions</a><a href="#widgets">Widgets</a><a href="#themes">Themes</a><a href="#scripts">Scripting</a><a href="https://github.com/tomaszstaniak/aros-launcher">Source ↗</a><a class="nav-get" href="#get">Get it</a></nav></header>
 
 <main id="main">
 
 <section class="hero">
 <div class="wrap hero-copy">
 <h1>Start anything on AROS<br>from the keyboard.</h1>
-<p class="intro">Launcher waits in the background. <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Space</kbd> opens its panel, a few letters find the program and <kbd>Return</kbd> starts it. The same panel does sums, converts units and currencies, finds files and open windows, installs packages and remembers what you copied.</p>
-<p class="fine">For ABIv11 distributions, mainline AROS on PC and the Raspberry Pi. Version 0.7.1.</p>
+<p class="intro">Jumpstart is a keyboard launcher. It waits in the background. <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Space</kbd> opens its panel, a few letters find the program and <kbd>Return</kbd> starts it. The same panel does sums, converts units and currencies, finds files and open windows, installs packages and remembers what you copied.</p>
+<p class="fine">For ABIv11 distributions, mainline AROS on PC and the Raspberry Pi. Version 0.8.0, open source (MIT).</p>
 </div>
 
 <div class="wrap demo" id="demo">
@@ -32,7 +32,7 @@
 <button role="tab" aria-selected="false" data-shot="q-shell" data-cap="A line that starts with &gt; runs as a Shell command in a console of its own.">&gt; list sys:</button>
 <button role="tab" aria-selected="false" data-shot="q-actions" data-cap="Tab on a result lists what else can be done with it.">cal, then Tab</button>
 </div>
-<figure class="stage"><img id="demo-shot" src="assets/q-hero.png" width="784" height="500" alt="The launcher panel on an AROS desktop showing the results for the selected query"><figcaption><span id="demo-cap">Three letters find Calculator. The other rows are programs and commands that contain the same letters.</span> <span class="where">Launcher 0.7.1 on AROS x86_64 ABIv11 under QEMU.</span></figcaption></figure>
+<figure class="stage"><img id="demo-shot" src="assets/q-hero.png" width="784" height="500" alt="The launcher panel on an AROS desktop showing the results for the selected query"><figcaption><span id="demo-cap">Three letters find Calculator. The other rows are programs and commands that contain the same letters.</span> <span class="where">Version 0.7.1 on AROS x86_64 ABIv11 under QEMU.</span></figcaption></figure>
 </div>
 </section>
 
@@ -147,33 +147,36 @@
 </section>
 
 <section id="scripts" class="section tinted"><div class="wrap">
-<div class="row">
-<div class="row-text">
+<div class="solo">
 <h2>ARexx, both ways.</h2>
-<p>The launcher has a public port, <code>LAUNCHER</code>, with the commands <code>SHOW</code>, <code>HIDE</code>, <code>TOGGLE</code>, <code>RESCAN</code>, <code>VERSION</code>, <code>QUIT</code> and <code>HELP</code>. A script can open the panel with a query already typed:</p>
-<pre><code>address LAUNCHER 'SHOW calc'</code></pre>
+<p>The launcher has a public port, <code>JUMPSTART</code>, with the commands <code>SHOW</code>, <code>HIDE</code>, <code>TOGGLE</code>, <code>RESCAN</code>, <code>VERSION</code>, <code>QUIT</code> and <code>HELP</code>. A script can open the panel with a query already typed:</p>
+<pre><code>address JUMPSTART 'SHOW calc'</code></pre>
 <p>It also sends. Type <code>rx</code> and a space, choose one of the public ports, then type the command. <kbd>Return</kbd> sends it and the answer appears under the row.</p>
-<pre><code>rx LAUNCHER VERSION</code></pre>
-</div>
-<figure class="shot"><img src="assets/rx.png" width="784" height="265" loading="lazy" alt="The panel after typing rx, listing the public port LAUNCHER"><figcaption>After <code>rx</code> the panel lists public ports. On this machine the launcher's own is the only one.</figcaption></figure>
+<pre><code>rx JUMPSTART VERSION</code></pre>
 </div>
 </div></section>
 
 <section id="get" class="section wrap get">
-<div class="section-heading"><h2>Get it.</h2><p class="section-lead">Version 0.7.1 is being tested. The downloads will be linked here with the first public release.</p></div>
+<div class="section-heading"><h2>Get Jumpstart.</h2><p class="section-lead">Version 0.8.0 is the first public release. With <a href="https://github.com/tomaszstaniak/arospkg">apkg</a>, one command installs it:</p></div>
+<pre class="install"><code>apkg install jumpstart</code></pre>
+<div class="downloads">
+<a class="dl" href="https://github.com/tomaszstaniak/aros-launcher/releases/download/v0.8.0/Jumpstart-0.8.0-aros-x86_64-abiv11-pc.zip"><strong>ABIv11 distributions</strong><span>x86_64, PC</span></a>
+<a class="dl" href="https://github.com/tomaszstaniak/aros-launcher/releases/download/v0.8.0/Jumpstart-0.8.0-aros-x86_64-abiv1-pc.zip"><strong>Mainline AROS</strong><span>x86_64, ABIv1, a nightly from 2026-11-06 or later</span></a>
+<a class="dl" href="https://github.com/tomaszstaniak/aros-launcher/releases/download/v0.8.0/Jumpstart-0.8.0-aros-aarch64-abiv1-raspi.zip"><strong>Raspberry Pi</strong><span>AArch64, ABIv1, tested under QEMU only</span></a>
+</div>
 <div class="cols">
-<article><h3>Systems</h3><p>ABIv11 distributions on x86_64, mainline AROS x86_64 (ABIv1, a nightly from 2026-11-06 or later) and the Raspberry Pi (AArch64, ABIv1). Each gets its own archive; the binaries do not cross.</p></article>
-<article><h3>What it needs</h3><p>TrueType fonts in <code>FONTS:TrueType</code> (DejaVu Sans, as installed with the system). Currency and weather need the network. Packages need apkg.</p></article>
-<article><h3>Starting it</h3><p>Double-click Launcher. Nothing appears; it waits for <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Space</kbd>. The first start from its icon also sets it up to start with the system, which you can switch off in its settings. The hotkey is the <code>CX_POPKEY</code> ToolType of the icon.</p></article>
+<article><h3>Starting it</h3><p>Unpack the archive anywhere and double-click Jumpstart. Nothing appears; it waits for <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Space</kbd>. The first start from its icon also sets it up to start with the system, which you can switch off in its settings. The hotkey is the <code>CX_POPKEY</code> ToolType of the icon.</p></article>
+<article><h3>What it needs</h3><p>TrueType fonts in <code>FONTS:TrueType</code> (DejaVu Sans, as installed with the system). Currency and weather need the network. Packages need apkg. The archives are not interchangeable between systems.</p></article>
+<article><h3>Notes and source</h3><p>The <a href="https://github.com/tomaszstaniak/aros-launcher/releases/tag/v0.8.0">release notes</a> list all files with their checksums. The source is on <a href="https://github.com/tomaszstaniak/aros-launcher">GitHub</a>, and that is also where to <a href="https://github.com/tomaszstaniak/aros-launcher/issues">report a problem</a>.</p></article>
 </div>
 </section>
 
 </main>
 
 <footer class="wrap">
-<div><a class="brand" href="#"><span class="brand-key" aria-hidden="true">L</span>Launcher</a><p>A keyboard launcher for AROS.</p></div>
-<nav aria-label="Related projects"><a href="https://tomaszstaniak.github.io/aros-dockbar/">Dockbar ↗</a><a href="https://tomaszstaniak.github.io/limpet/">Limpet ↗</a><a href="https://github.com/tomaszstaniak/arospkg">apkg ↗</a><a href="https://tomaszstaniak.com">tomaszstaniak.com ↗</a></nav>
-<p class="legal">Exchange rates: the European Central Bank's euro foreign exchange reference rates. Weather data by <a href="https://open-meteo.com/">Open-Meteo</a> (<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>). The colour themes have their own licences, listed in the Themes drawer of each archive. Screenshots were taken under QEMU.</p>
+<div><a class="brand" href="#"><span class="brand-key" aria-hidden="true">J</span>Jumpstart</a><p>A keyboard launcher for AROS.</p></div>
+<nav aria-label="Related projects"><a href="https://github.com/tomaszstaniak/aros-launcher">GitHub ↗</a><a href="https://tomaszstaniak.github.io/aros-dockbar/">Dockbar ↗</a><a href="https://tomaszstaniak.github.io/limpet/">Limpet ↗</a><a href="https://github.com/tomaszstaniak/arospkg">apkg ↗</a><a href="https://tomaszstaniak.com">tomaszstaniak.com ↗</a></nav>
+<p class="legal">Jumpstart is MIT-licensed. Exchange rates: the European Central Bank's euro foreign exchange reference rates. Weather data by <a href="https://open-meteo.com/">Open-Meteo</a> (<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>). The colour themes have their own licences, listed in the Themes drawer of each archive. Screenshots were taken under QEMU.</p>
 </footer>
 
 <script>

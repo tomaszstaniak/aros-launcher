@@ -7,7 +7,7 @@
  *   CX_POPUP=YES|NO       show the panel at start, default NO
  *   LOG=<file>            write what happens to a file (for tests)
  *   SETTINGS=<drawer>     where settings and use counts are kept,
- *                         default ENVARC:Launcher
+ *                         default ENVARC:Jumpstart
  */
 #include <stdarg.h>
 #include <stdio.h>
@@ -64,7 +64,7 @@
 #include "zk_present.h"
 #include "zk_text_aros.h"
 
-static const char version[] __attribute__((used)) = "$VER: Launcher 0.7.1 (18.11.2026)";
+static const char version[] __attribute__((used)) = "$VER: Jumpstart 0.8.0 (18.11.2026)";
 
 #define EVT_HOTKEY 1
 #define EVT_SHORTCUT 100      /* and the next LN_SHORTCUTS_MAX: the hotkeys of results */
@@ -364,7 +364,7 @@ static void rates_refresh(void)
     if (app.rates_asked && now_s - app.rates_asked < RATES_RETRY) return;
     if (!zk_json_quote(app.widget_root, quoted, sizeof quoted)) return;
     app.rates_generation++;
-    snprintf(app.rates_request, sizeof app.rates_request, "T:Launcher-rates-%s-%lu.json", app.rates_session, app.rates_generation);
+    snprintf(app.rates_request, sizeof app.rates_request, "T:Jumpstart-rates-%s-%lu.json", app.rates_session, app.rates_generation);
     if (!(f = fopen(app.rates_request, "wb"))) return;
     fprintf(f, "{\"api\":1,\"package\":\"org.aros.currency\",\"packageRoot\":%s,\"instance\":\"launcher\",\"session\":\"%s\","
                "\"generation\":%lu,\"operation\":\"rates\",\"settings\":{}}\n", quoted, app.rates_session, app.rates_generation);
@@ -405,7 +405,7 @@ static void rates_answer(void)
 
 /* --- ARexx ----------------------------------------------------------------- */
 
-#define REXX_PORT "LAUNCHER"
+#define REXX_PORT "JUMPSTART"
 
 /* Opened at start; without it the launcher has no ARexx port and sends nothing. */
 struct RxsLib *RexxSysBase;
@@ -614,7 +614,7 @@ static int weather_ask(int job, const char *operation, const char *more)
     FILE *f;
     if (app.job != JOB_NONE || !app.wx_provider[0] || !zk_json_quote(app.wx_root, quoted, sizeof quoted)) return 0;
     app.wx_generation++;
-    snprintf(app.wx_request, sizeof app.wx_request, "T:Launcher-weather-%s-%lu.json", app.rates_session, app.wx_generation);
+    snprintf(app.wx_request, sizeof app.wx_request, "T:Jumpstart-weather-%s-%lu.json", app.rates_session, app.wx_generation);
     if (!(f = fopen(app.wx_request, "wb"))) return 0;
     fprintf(f, "{\"api\":1,\"package\":\"org.aros.weather\",\"packageRoot\":%s,\"instance\":\"launcher\",\"session\":\"%s\","
                "\"generation\":%lu,\"operation\":\"%s\",%s}\n", quoted, app.rates_session, app.wx_generation, operation, more);
@@ -805,10 +805,10 @@ enum { CMD_SETTINGS = 1, CMD_RESCAN, CMD_QUIT, CMD_RESTART, CMD_SHUTDOWN, CMD_DO
 #define CMD_KEY 0xffff0000u         /* row keys of commands; program ids are far below */
 #define WIN_KEY 0xfffe0000u         /* row keys of open windows */
 static const struct { unsigned id; const char *title, *subtitle; } commands[] = {
-    { CMD_SETTINGS, "Launcher Settings", "Folders for programs and files, look, start with the system" },
-    { CMD_ABOUT, "About Launcher", "Version, what it knows, credits" },
+    { CMD_SETTINGS, "Jumpstart Settings", "Folders for programs and files, look, start with the system" },
+    { CMD_ABOUT, "About Jumpstart", "Version, what it knows, credits" },
     { CMD_RESCAN, "Rescan Programs and Files", "Look through the folders again" },
-    { CMD_QUIT, "Quit Launcher", "Stop the launcher until it is started again" },
+    { CMD_QUIT, "Quit Jumpstart", "Stop the launcher until it is started again" },
     { CMD_RESTART, "Restart Computer", "Asks once more before it restarts" },
     { CMD_SHUTDOWN, "Shut Down Computer", "Asks once more before it switches off" },
     { CMD_SHORTCUTS, "Aliases and Hotkeys", "See, change or remove them" },
@@ -1151,7 +1151,7 @@ static void hotkey_fired(int i)
 
 /* Answers the current query: the calculator's row, then one list of
  * programs and the launcher's own commands, best match first. Commands
- * and programs are ranked together, so that "quit" finds Quit Launcher
+ * and programs are ranked together, so that "quit" finds Quit Jumpstart
  * before a program that merely has those letters. */
 static void answer(void)
 {
@@ -1978,7 +1978,7 @@ static void run_selected(void)
     if (row->source == LN_SRC_SHELL) {
         size_t k = 0;
         char *cmd = zt_local_copy(row->title, strlen(row->title), &k);
-        BPTR con = cmd ? Open((CONST_STRPTR)"CON:40/60/640/240/Launcher/AUTO/CLOSE/WAIT", MODE_OLDFILE) : 0;
+        BPTR con = cmd ? Open((CONST_STRPTR)"CON:40/60/640/240/Jumpstart/AUTO/CLOSE/WAIT", MODE_OLDFILE) : 0;
         LONG rc = -1;
         if (con) {
             /* started and left to run: the console is the command's and closes with it */
@@ -2330,7 +2330,7 @@ int main(int argc, char **argv)
     const char *key = (const char *)ArgString(args, (UBYTE *)"CX_POPKEY", (UBYTE *)"ctrl alt space");
     const char *popup = (const char *)ArgString(args, (UBYTE *)"CX_POPUP", (UBYTE *)"NO");
     const char *logname = (const char *)ArgString(args, (UBYTE *)"LOG", (UBYTE *)"");
-    const char *settings = (const char *)ArgString(args, (UBYTE *)"SETTINGS", (UBYTE *)"ENVARC:Launcher");
+    const char *settings = (const char *)ArgString(args, (UBYTE *)"SETTINGS", (UBYTE *)"ENVARC:Jumpstart");
     LONG pri = ArgInt(args, (UBYTE *)"CX_PRIORITY", 0);
     struct NewBroker nb;
     CxObj *filter;
@@ -2344,7 +2344,7 @@ int main(int argc, char **argv)
     snprintf(app.counts, sizeof app.counts, "%s/counts", app.dir);
     snprintf(app.hotkey, sizeof app.hotkey, "%s", key);
     note("start key='%s' settings='%s'", key, app.dir);
-    if (zt_layer_open() != ZT_OK) { PutStr((CONST_STRPTR)"Launcher: the text layer could not start\n"); goto out; }
+    if (zt_layer_open() != ZT_OK) { PutStr((CONST_STRPTR)"Jumpstart: the text layer could not start\n"); goto out; }
     text = 1;
     if (!(app.index = ln_index_new()) || !(app.icons = ln_icons_new())) goto out;
     if (!(app.cxport = CreateMsgPort()) || !(app.scanport = CreateMsgPort()) || !(app.rexxreply = CreateMsgPort())) goto out;
@@ -2363,8 +2363,8 @@ int main(int argc, char **argv)
 
     memset(&nb, 0, sizeof nb);
     nb.nb_Version = NB_VERSION;
-    nb.nb_Name = (STRPTR)"Launcher";
-    nb.nb_Title = (STRPTR)"Launcher";
+    nb.nb_Name = (STRPTR)"Jumpstart";
+    nb.nb_Title = (STRPTR)"Jumpstart";
     nb.nb_Descr = (STRPTR)"Finds and starts programs";
     nb.nb_Unique = NBU_UNIQUE | NBU_NOTIFY;
     nb.nb_Flags = COF_SHOW_HIDE;
@@ -2381,7 +2381,7 @@ int main(int argc, char **argv)
     AttachCxObj(filter, CxSender(app.cxport, EVT_HOTKEY));
     AttachCxObj(filter, CxTranslate(NULL));
     if (CxObjError(filter)) {
-        Printf((CONST_STRPTR)"Launcher: \"%s\" is not a hotkey\n", (IPTR)key);
+        Printf((CONST_STRPTR)"Jumpstart: \"%s\" is not a hotkey\n", (IPTR)key);
         note("bad hotkey");
         goto out;
     }
@@ -2413,7 +2413,7 @@ int main(int argc, char **argv)
     /* Started from its icon for the first time, with its settings in the
        usual place: from now on it starts with the system. The switch is in
        the settings. */
-    if (app.cfg.autostart < 0 && wb && app.program[0] && !strcmp(app.dir, "ENVARC:Launcher")) {
+    if (app.cfg.autostart < 0 && wb && app.program[0] && !strcmp(app.dir, "ENVARC:Jumpstart")) {
         app.cfg.autostart = ln_autostart_on() || ln_autostart_set(1, app.program);
         save_config();
         note("first start: autostart=%d", app.cfg.autostart);

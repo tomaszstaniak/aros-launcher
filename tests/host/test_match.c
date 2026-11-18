@@ -53,11 +53,11 @@ int main(void)
 
     /* a command named by its first word beats a program that only has the
        letters; a program named from its start beats a command's second word */
-    assert(go("quit", "Quit Launcher", &a));
+    assert(go("quit", "Quit Jumpstart", &a));
     assert(go("quit", "QuickPart", &b));
     assert(a.score > b.score);
     assert(go("se", "Serial", &a));
-    assert(go("se", "Launcher Settings", &b));
+    assert(go("se", "Jumpstart Settings", &b));
     assert(a.score > b.score);
 
     /* limits: long title, long query */

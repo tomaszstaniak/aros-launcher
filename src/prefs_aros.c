@@ -101,12 +101,12 @@ int ln_prefs_run(struct ln_config *c, const struct ln_about *about, int page)
 
     if (!(MUIMasterBase = OpenLibrary((CONST_STRPTR)"muimaster.library", 19))) return 0;
     app = ApplicationObject,
-        MUIA_Application_Title, (IPTR)"Launcher Settings",
-        MUIA_Application_Base, (IPTR)"LAUNCHERSETTINGS",
+        MUIA_Application_Title, (IPTR)"Jumpstart Settings",
+        MUIA_Application_Base, (IPTR)"JUMPSTARTSETTINGS",
         MUIA_Application_UseCommodities, FALSE,
         MUIA_Application_UseRexx, FALSE,
         SubWindow, (IPTR)(win = WindowObject,
-            MUIA_Window_Title, (IPTR)"Launcher Settings",
+            MUIA_Window_Title, (IPTR)"Jumpstart Settings",
             MUIA_Window_ID, MAKE_ID('L', 'N', 'S', '2'),
             MUIA_Window_Width, MUIV_Window_Width_Visible(50),
             WindowContents, (IPTR)(VGroup,
@@ -160,7 +160,7 @@ int ln_prefs_run(struct ln_config *c, const struct ln_about *about, int page)
                             Child, (IPTR)Label1("Start with the system"),
                             Child, (IPTR)(HGroup, Child, (IPTR)(start = checkmark(c->autostart > 0)), Child, (IPTR)HSpace(0), End),
                         End),
-                        Child, (IPTR)(TextObject, MUIA_Text_Contents, (IPTR)"The hotkey is the CX_POPKEY ToolType of the Launcher icon.", End),
+                        Child, (IPTR)(TextObject, MUIA_Text_Contents, (IPTR)"The hotkey is the CX_POPKEY ToolType of the Jumpstart icon.", End),
                         Child, (IPTR)VSpace(0),
                     End),
                     /* About */

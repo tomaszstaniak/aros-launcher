@@ -25,20 +25,20 @@ int main(void)
     assert(ln_shortcuts_set(&s, LN_ALIAS, "word", "SYS:Apps/WordCraft", "WordCraft") && s.n == 2);
     assert(!ln_shortcuts_by_key(&s, LN_ALIAS, "wc") && ln_shortcuts_by_key(&s, LN_ALIAS, "word"));
     /* a key another target takes moves */
-    assert(ln_shortcuts_set(&s, LN_ALIAS, "word", "command:Quit Launcher", "Quit Launcher") && s.n == 2);
+    assert(ln_shortcuts_set(&s, LN_ALIAS, "word", "command:Quit Jumpstart", "Quit Jumpstart") && s.n == 2);
     assert(!ln_shortcuts_key_of(&s, LN_ALIAS, "SYS:Apps/WordCraft"));
-    assert(!strcmp(ln_shortcuts_by_key(&s, LN_ALIAS, "WORD")->title, "Quit Launcher"));
+    assert(!strcmp(ln_shortcuts_by_key(&s, LN_ALIAS, "WORD")->title, "Quit Jumpstart"));
     /* empty removes; removing what is not there is fine; rubbish changes nothing */
-    assert(ln_shortcuts_set(&s, LN_ALIAS, "", "command:Quit Launcher", "x") && s.n == 1);
-    assert(ln_shortcuts_set(&s, LN_ALIAS, "  ", "command:Quit Launcher", "x") && s.n == 1);
+    assert(ln_shortcuts_set(&s, LN_ALIAS, "", "command:Quit Jumpstart", "x") && s.n == 1);
+    assert(ln_shortcuts_set(&s, LN_ALIAS, "  ", "command:Quit Jumpstart", "x") && s.n == 1);
     assert(!ln_shortcuts_set(&s, 'x', "a", "b", "c") && !ln_shortcuts_set(&s, LN_ALIAS, "a", "", "c"));
     assert(!ln_shortcuts_set(&s, LN_HOTKEY, "this key is far too long to be kept by anyone, it goes on and on and on and on and on", "b", "c") && s.n == 1);
 
-    assert(ln_shortcuts_set(&s, LN_ALIAS, "q", "command:Quit Launcher", "Quit Launcher"));
+    assert(ln_shortcuts_set(&s, LN_ALIAS, "q", "command:Quit Jumpstart", "Quit Jumpstart"));
     text = ln_shortcuts_text(&s, &n);
     assert(text && ln_shortcuts_parse(&t, text, n) && t.n == 2);
     assert(!strcmp(ln_shortcuts_key_of(&t, LN_HOTKEY, "SYS:Apps/WordCraft"), "ctrl alt w"));
-    assert(!strcmp(ln_shortcuts_by_key(&t, LN_ALIAS, "q")->title, "Quit Launcher"));
+    assert(!strcmp(ln_shortcuts_by_key(&t, LN_ALIAS, "q")->title, "Quit Jumpstart"));
     free(text);
     ln_shortcuts_free(&t);
     memset(&t, 0, sizeof t);

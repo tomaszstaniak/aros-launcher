@@ -367,7 +367,7 @@ struct ln_scan *ln_scan_start(struct MsgPort *to, char *const *folders, int n, c
             }
         }
     }
-    s->proc = CreateNewProcTags(NP_Entry, (IPTR)entry, NP_Name, (IPTR)"Launcher scanner",
+    s->proc = CreateNewProcTags(NP_Entry, (IPTR)entry, NP_Name, (IPTR)"Jumpstart scanner",
                                 NP_StackSize, 65536, NP_Priority, -1, NP_UserData, (IPTR)s,
                                 NP_WindowPtr, (IPTR)-1, NP_CopyVars, FALSE, TAG_DONE);
     if (!s->proc) { free_scan(s); return NULL; }
