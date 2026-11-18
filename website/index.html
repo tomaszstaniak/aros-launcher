@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Jumpstart: start anything on AROS from the keyboard</title>
+<title>Jumpstart: a keyboard launcher for AROS</title>
 <meta name="description" content="Jumpstart is a keyboard launcher for AROS. One hotkey opens a panel that starts programs, finds files and windows, calculates, converts currencies, installs packages and keeps your clipboard history.">
 <meta name="theme-color" content="#16191c"><meta property="og:title" content="Jumpstart for AROS"><meta property="og:description" content="Start anything on AROS from the keyboard: programs, files, windows, sums, currencies, packages, clipboard history."><meta property="og:type" content="website"><meta property="og:image" content="https://tomaszstaniak.github.io/aros-launcher/assets/hero.png">
 <link rel="stylesheet" href="style.css?v=1">
@@ -15,13 +15,13 @@
 
 <section class="hero">
 <div class="wrap hero-copy">
-<h1>Start anything on AROS<br>from the keyboard.</h1>
-<p class="intro">Jumpstart is a keyboard launcher. It waits in the background. <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Space</kbd> opens its panel, a few letters find the program and <kbd>Return</kbd> starts it. The same panel does sums, converts units and currencies, finds files and open windows, installs packages and remembers what you copied.</p>
+<h1>Jumpstart, a keyboard<br>launcher for AROS</h1>
+<p class="intro">Press <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Space</kbd>, type a few letters and press <kbd>Return</kbd> to open a program. If you already have a document open, type its window title to switch back to it.</p>
 <p class="fine">For ABIv11 distributions, mainline AROS on PC and the Raspberry Pi. Version 0.8.0, open source (MIT).</p>
 </div>
 
 <div class="wrap demo" id="demo">
-<p class="demo-label" id="demo-label">Pick something to type</p>
+<p class="demo-label" id="demo-label">Choose a sample query</p>
 <div class="queries" role="tablist" aria-labelledby="demo-label">
 <button role="tab" aria-selected="true" data-shot="q-hero" data-cap="Three letters find Calculator. The other rows are programs and commands that contain the same letters.">cal</button>
 <button role="tab" aria-selected="false" data-shot="q-calc" data-cap="A sum is answered as you type. Return copies the answer.">(3+4)^2 * 1.23</button>
@@ -39,9 +39,9 @@
 <section id="find" class="section wrap">
 <div class="row">
 <div class="row-text">
-<h2>Programs, windows and files in one list.</h2>
-<p>Letters may be scattered: <code>wc</code> finds WordCraft. Case and accents do not matter, and programs you start often move up the list.</p>
-<p>Open windows are listed by title beside the programs, and <kbd>Return</kbd> brings the chosen one to the front.</p>
+<h2>Find a program, window or file</h2>
+<p>Try <code>wc</code> for WordCraft. The letters can be anywhere in the name, and you can leave out accents or use lowercase. Programs you open often move up the list.</p>
+<p>Open windows appear under their titles. Pressing <kbd>Return</kbd> brings the chosen one to the front.</p>
 <p>Files and drawers come from folders you pick in the settings. No folder is searched until you add one. You can leave drawers out, or names by pattern, for example <code>#?.bak</code>. The index is built in the background and kept between starts.</p>
 </div>
 <figure class="shot"><img src="assets/windows.png" width="784" height="425" loading="lazy" alt="The panel in its light colours over an open AROS drawer window, listing the window AROS:, the program InstallAROS and a command"><figcaption>The window <code>AROS:</code> is the first result. Light colours, frosted glass over the drawer behind.</figcaption></figure>
@@ -49,7 +49,7 @@
 </section>
 
 <section id="answers" class="section tinted"><div class="wrap">
-<div class="section-heading"><h2>It answers before you press Return.</h2><p class="section-lead">Type a calculation or a question in words and the answer is the first result. <kbd>Return</kbd> copies it to the clipboard.</p></div>
+<div class="section-heading"><h2>Calculations, conversions and weather</h2><p class="section-lead">Type a calculation or a question in words and the answer is the first result. <kbd>Return</kbd> copies it to the clipboard.</p></div>
 <div class="answers">
 <ul class="examples" aria-label="Things you can type">
 <li><code>sqrt(2)</code><span>1.41421356237</span></li>
@@ -72,8 +72,8 @@
 <section id="keys" class="section wrap">
 <div class="row flip">
 <div class="row-text">
-<h2>Tab shows what else you can do.</h2>
-<p>Press <kbd>Tab</kbd> on a result for its other actions: show it in its drawer, copy its path, open a Shell there.</p>
+<h2>Actions and shortcuts</h2>
+<p>Select a file and press <kbd>Tab</kbd> to see its actions. You can copy the path, show the file in its drawer or open a Shell there.</p>
 <p>Two of the actions give a program a shortcut of its own. An alias is a short word; typed whole, it puts that program first. A hotkey starts the program from anywhere without opening the panel. You write it the way commodities do: <code>ctrl alt w</code>, <code>lalt f5</code>, <code>ramiga t</code>.</p>
 <p>"Aliases and Hotkeys" lists everything you have set, and <kbd>Return</kbd> on a line changes or removes it.</p>
 </div>
@@ -87,12 +87,12 @@
 <article>
 <figure class="shot"><img src="assets/clip.png" width="784" height="358" loading="lazy" alt="Clipboard history with three entries, the newest marked"><figcaption>Three copied answers, newest first.</figcaption></figure>
 <h3>Clipboard history</h3>
-<p>Type <code>clip</code> for the last 50 texts you copied; more letters narrow the list. <kbd>Return</kbd> puts one back on the clipboard, <kbd>Tab</kbd> deletes an entry or all of them. The history is kept in memory only. Nothing is written to a disk, so a password you copied is gone when the launcher quits.</p>
+<p>Type <code>clip</code> to see your last 50 clipboard entries. Keep typing to find a particular piece of text. <kbd>Return</kbd> puts one back on the clipboard, <kbd>Tab</kbd> deletes an entry or all of them. Jumpstart keeps the history in memory and clears it when you quit.</p>
 </article>
 <article>
 <figure class="shot bare"><img src="assets/packages.png" width="608" height="162" loading="lazy" alt="The panel listing the package eza with its description and version, with Return Install in the footer"><figcaption>A package that is not installed yet. Earlier build, mainline AROS x86_64.</figcaption></figure>
 <h3>Packages from apkg</h3>
-<p>With <a href="https://github.com/tomaszstaniak/arospkg">apkg</a> installed, packages from its catalogue that you do not have yet are found by name or by a word of their description. <kbd>Return</kbd> asks once. A second <kbd>Return</kbd> installs the package in a console window.</p>
+<p>With <a href="https://github.com/tomaszstaniak/arospkg">apkg</a> installed, you can search for packages by name or description. Results show packages you haven’t installed yet. Press <kbd>Return</kbd> to review the choice, then <kbd>Return</kbd> again to start installation in a console window.</p>
 </article>
 <article>
 <figure class="shot"><img src="assets/shell.png" width="784" height="265" loading="lazy" alt="The panel offering to run list sys: as a Shell command"><figcaption>A Shell command typed into the panel.</figcaption></figure>
@@ -103,11 +103,11 @@
 </section>
 
 <section id="widgets" class="section tinted"><div class="wrap">
-<div class="section-heading"><h2>Widgets it shares with Dockbar.</h2><p class="section-lead">Currency answers and the weather come from widgets, small packages in the format <a href="https://tomaszstaniak.github.io/aros-dockbar/">Dockbar</a> uses for its tiles and cards.</p></div>
+<div class="section-heading"><h2>Dockbar widgets</h2><p class="section-lead">Currency answers and the weather come from widgets, small packages in the format <a href="https://tomaszstaniak.github.io/aros-dockbar/">Dockbar</a> uses for its tiles and cards.</p></div>
 <div class="widgets">
 <div class="widget-text">
 <p>A widget is a drawer with a manifest, a description of its settings, a views file and a provider program. The provider fetches the data and writes a snapshot of named fields and rows. Each host shows that snapshot its own way: Dockbar draws a tile and a card, the launcher puts the same numbers into an answer.</p>
-<p>The card is described by the widget. <code>views.json</code> lists blocks such as text, trend, icon, row and list, and Dockbar lays them out. A new widget does not need a new version of the host.</p>
+<p>The widget describes its card in <code>views.json</code>. It lists blocks such as text, trend, icon, row and list, and Dockbar lays them out. A new widget does not need a new version of the host.</p>
 <pre aria-label="The card of the Currency widget, from its views.json"><code>"expanded": [
   { "text": "heading" },
   { "text": "basis", "style": "muted" },
@@ -128,7 +128,7 @@
 </div></section>
 
 <section id="themes" class="section wrap">
-<div class="section-heading"><h2>Colour themes from Limpet.</h2><p class="section-lead">The panel reads themes in the format of <a href="https://tomaszstaniak.github.io/limpet/">Limpet</a>, the AROS terminal, so the launcher and your Shell can wear the same colours.</p></div>
+<div class="section-heading"><h2>Limpet colour themes</h2><p class="section-lead">The panel reads themes in the format of <a href="https://tomaszstaniak.github.io/limpet/">Limpet</a>, the AROS terminal, so you can use the same theme in both.</p></div>
 <div class="theme-grid">
 <figure><img src="assets/theme-dark.png" width="644" height="380" loading="lazy" alt="The panel in its own dark colours"><figcaption>Built in, dark</figcaption></figure>
 <figure><img src="assets/theme-light.png" width="644" height="380" loading="lazy" alt="The panel in its own light colours"><figcaption>Built in, light</figcaption></figure>
@@ -141,23 +141,23 @@
 </div>
 <div class="cols">
 <article><h3>You do not need Limpet</h3><p>Fifteen of Limpet's themes come in the launcher's Themes drawer. If Limpet is installed, the themes in its own drawer are found by name as well. A theme file of your own works too.</p></article>
-<article><h3>Dark and light from one theme</h3><p>A theme is either dark or light. Choose the other variant and the launcher makes it: every colour keeps its hue and takes the mirrored lightness, and the text is moved until it reads clearly.</p></article>
+<article><h3>Dark and light from one theme</h3><p>A theme is either dark or light. Choose the other variant and the launcher makes it: every colour keeps its hue and takes the mirrored lightness, and Jumpstart adjusts text colours for contrast.</p></article>
 <article><h3>The same look as Dockbar</h3><p>Without a theme, the launcher uses the dark and light colours Dockbar has, so the two look alike on one desktop. Compact rows and the frosted glass behind the panel are switches in the settings.</p></article>
 </div>
 </section>
 
 <section id="scripts" class="section tinted"><div class="wrap">
 <div class="solo">
-<h2>ARexx, both ways.</h2>
+<h2>ARexx commands</h2>
 <p>The launcher has a public port, <code>JUMPSTART</code>, with the commands <code>SHOW</code>, <code>HIDE</code>, <code>TOGGLE</code>, <code>RESCAN</code>, <code>VERSION</code>, <code>QUIT</code> and <code>HELP</code>. A script can open the panel with a query already typed:</p>
 <pre><code>address JUMPSTART 'SHOW calc'</code></pre>
-<p>It also sends. Type <code>rx</code> and a space, choose one of the public ports, then type the command. <kbd>Return</kbd> sends it and the answer appears under the row.</p>
+<p>To send a command from Jumpstart, type <code>rx</code> and a space, choose one of the public ports, then type the command. <kbd>Return</kbd> sends it and the answer appears under the row.</p>
 <pre><code>rx JUMPSTART VERSION</code></pre>
 </div>
 </div></section>
 
 <section id="get" class="section wrap get">
-<div class="section-heading"><h2>Get Jumpstart.</h2><p class="section-lead">Version 0.8.0 is the first public release. With <a href="https://github.com/tomaszstaniak/arospkg">apkg</a>, one command installs it:</p></div>
+<div class="section-heading"><h2>Downloads</h2><p class="section-lead">Version 0.8.0 is the first public release. With <a href="https://github.com/tomaszstaniak/arospkg">apkg</a>, one command installs it:</p></div>
 <pre class="install"><code>apkg install jumpstart</code></pre>
 <div class="downloads">
 <a class="dl" href="https://github.com/tomaszstaniak/aros-launcher/releases/download/v0.8.0/Jumpstart-0.8.0-aros-x86_64-abiv11-pc.zip"><strong>ABIv11 distributions</strong><span>x86_64, PC</span></a>
@@ -165,9 +165,9 @@
 <a class="dl" href="https://github.com/tomaszstaniak/aros-launcher/releases/download/v0.8.0/Jumpstart-0.8.0-aros-aarch64-abiv1-raspi.zip"><strong>Raspberry Pi</strong><span>AArch64, ABIv1, tested under QEMU only</span></a>
 </div>
 <div class="cols">
-<article><h3>Starting it</h3><p>Unpack the archive anywhere and double-click Jumpstart. Nothing appears; it waits for <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Space</kbd>. The first start from its icon also sets it up to start with the system, which you can switch off in its settings. The hotkey is the <code>CX_POPKEY</code> ToolType of the icon.</p></article>
-<article><h3>What it needs</h3><p>TrueType fonts in <code>FONTS:TrueType</code> (DejaVu Sans, as installed with the system). Currency and weather need the network. Packages need apkg. The archives are not interchangeable between systems.</p></article>
-<article><h3>Notes and source</h3><p>The <a href="https://github.com/tomaszstaniak/aros-launcher/releases/tag/v0.8.0">release notes</a> list all files with their checksums. The source is on <a href="https://github.com/tomaszstaniak/aros-launcher">GitHub</a>, and that is also where to <a href="https://github.com/tomaszstaniak/aros-launcher/issues">report a problem</a>.</p></article>
+<article><h3>Starting it</h3><p>Unpack the archive anywhere and double-click Jumpstart. It runs in the background. Open it with <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Space</kbd>. The first start from its icon also sets it up to start with the system, which you can switch off in its settings. The hotkey is the <code>CX_POPKEY</code> ToolType of the icon.</p></article>
+<article><h3>What it needs</h3><p>TrueType fonts in <code>FONTS:TrueType</code> (DejaVu Sans, as installed with the system). Currency and weather need the network. Packages need apkg. Choose the archive for your architecture and ABI.</p></article>
+<article><h3>Notes and source</h3><p>The <a href="https://github.com/tomaszstaniak/aros-launcher/releases/tag/v0.8.0">release notes</a> list the files and their checksums. The source is on <a href="https://github.com/tomaszstaniak/aros-launcher">GitHub</a>, where you can also <a href="https://github.com/tomaszstaniak/aros-launcher/issues">report a problem</a>.</p></article>
 </div>
 </section>
 
