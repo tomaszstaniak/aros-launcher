@@ -64,7 +64,7 @@
 #include "zk_present.h"
 #include "zk_text_aros.h"
 
-static const char version[] __attribute__((used)) = "$VER: Launcher 0.7 (18.11.2026)";
+static const char version[] __attribute__((used)) = "$VER: Launcher 0.7.1 (18.11.2026)";
 
 #define EVT_HOTKEY 1
 #define EVT_SHORTCUT 100      /* and the next LN_SHORTCUTS_MAX: the hotkeys of results */
@@ -2216,9 +2216,7 @@ static void scan_events(void)
             struct ln_pkglist fresh;
             memset(&fresh, 0, sizeof fresh);
             if (text && ln_pkglist_parse(&fresh, text, n)) {
-                if (app.files) ln_fileindex_free(app.files);
-    if (app.files_next) ln_fileindex_free(app.files_next);
-    ln_pkglist_free(&app.pkgs);
+                ln_pkglist_free(&app.pkgs);
                 app.pkgs = fresh;
                 snprintf(app.apkg, sizeof app.apkg, "%s", m->path);
                 app.index_changed = 1;
@@ -2492,6 +2490,8 @@ out:
     close_fonts(&app.p);
     if (app.p.doc) ze_free(app.p.doc);
     if (app.p.res) ln_results_free(app.p.res);
+    if (app.files) ln_fileindex_free(app.files);
+    if (app.files_next) ln_fileindex_free(app.files_next);
     ln_pkglist_free(&app.pkgs);
     if (app.icons) ln_icons_free(app.icons);
     if (app.index) ln_index_free(app.index);
