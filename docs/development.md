@@ -25,7 +25,7 @@ More:
 
 ```sh
 LAUNCHER_TARGET=<target> scripts/build-widgets.sh     # the Currency widget's provider (needs curl and OpenSSL in the SDK)
-LAUNCHER_TARGET=<target> LAUNCHER_LABEL=test1 scripts/package.sh    # dist/Launcher-<version>-<label>-<target>.zip
+LAUNCHER_TARGET=<target> LAUNCHER_LABEL=test1 scripts/package.sh    # dist/Jumpstart-<version>-<label>-<archive name>.zip
 LAUNCHER_TARGET=<target> scripts/package-widget.sh    # dist/Currency-widget-<version>-<target>.zip
 ```
 
