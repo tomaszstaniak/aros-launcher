@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Launcher: start anything on AROS from the keyboard</title>
+<meta name="description" content="A keyboard launcher for AROS. One hotkey opens a panel that starts programs, finds files and windows, calculates, converts currencies, installs packages and keeps your clipboard history.">
+<meta name="theme-color" content="#16191c"><meta property="og:title" content="Launcher for AROS"><meta property="og:description" content="Start anything on AROS from the keyboard: programs, files, windows, sums, currencies, packages, clipboard history."><meta property="og:type" content="website"><meta property="og:image" content="https://tomaszstaniak.github.io/aros-launcher/assets/hero.png">
+<link rel="stylesheet" href="style.css?v=1">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header wrap"><a href="#" class="brand"><span class="brand-key" aria-hidden="true">L</span>Launcher</a><nav aria-label="Main navigation"><a href="#find">Find</a><a href="#answers">Answers</a><a href="#keys">Actions</a><a href="#widgets">Widgets</a><a href="#themes">Themes</a><a href="#scripts">Scripting</a><a class="nav-get" href="#get">Get it</a></nav></header>
+
+<main id="main">
+
+<section class="hero">
+<div class="wrap hero-copy">
+<h1>Start anything on AROS<br>from the keyboard.</h1>
+<p class="intro">Launcher waits in the background. <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Space</kbd> opens its panel, a few letters find the program and <kbd>Return</kbd> starts it. The same panel does sums, converts units and currencies, finds files and open windows, installs packages and remembers what you copied.</p>
+<p class="fine">For ABIv11 distributions, mainline AROS on PC and the Raspberry Pi. Version 0.7.1.</p>
+</div>
+
+<div class="wrap demo" id="demo">
+<p class="demo-label" id="demo-label">Pick something to type</p>
+<div class="queries" role="tablist" aria-labelledby="demo-label">
+<button role="tab" aria-selected="true" data-shot="q-hero" data-cap="Three letters find Calculator. The other rows are programs and commands that contain the same letters.">cal</button>
+<button role="tab" aria-selected="false" data-shot="q-calc" data-cap="A sum is answered as you type. Return copies the answer.">(3+4)^2 * 1.23</button>
+<button role="tab" aria-selected="false" data-shot="q-time" data-cap="Time in another city, using the time zone set in the system's locale settings.">15:30 warsaw to new york</button>
+<button role="tab" aria-selected="false" data-shot="q-files" data-cap="Files from the folders you chose in the settings. The documents here were made for the picture.">invoice</button>
+<button role="tab" aria-selected="false" data-shot="q-windows" data-cap="An open window is found by its title. Return brings it to the front.">aros</button>
+<button role="tab" aria-selected="false" data-shot="q-clip" data-cap="The texts that were on the clipboard, newest first.">clip</button>
+<button role="tab" aria-selected="false" data-shot="q-shell" data-cap="A line that starts with &gt; runs as a Shell command in a console of its own.">&gt; list sys:</button>
+<button role="tab" aria-selected="false" data-shot="q-actions" data-cap="Tab on a result lists what else can be done with it.">cal, then Tab</button>
+</div>
+<figure class="stage"><img id="demo-shot" src="assets/q-hero.png" width="784" height="500" alt="The launcher panel on an AROS desktop showing the results for the selected query"><figcaption><span id="demo-cap">Three letters find Calculator. The other rows are programs and commands that contain the same letters.</span> <span class="where">Launcher 0.7.1 on AROS x86_64 ABIv11 under QEMU.</span></figcaption></figure>
+</div>
+</section>
+
+<section id="find" class="section wrap">
+<div class="row">
+<div class="row-text">
+<h2>Programs, windows and files in one list.</h2>
+<p>Letters may be scattered: <code>wc</code> finds WordCraft. Case and accents do not matter, and programs you start often move up the list.</p>
+<p>Open windows are listed by title beside the programs, and <kbd>Return</kbd> brings the chosen one to the front.</p>
+<p>Files and drawers come from folders you pick in the settings. No folder is searched until you add one. You can leave drawers out, or names by pattern, for example <code>#?.bak</code>. The index is built in the background and kept between starts.</p>
+</div>
+<figure class="shot"><img src="assets/windows.png" width="784" height="425" loading="lazy" alt="The panel in its light colours over an open AROS drawer window, listing the window AROS:, the program InstallAROS and a command"><figcaption>The window <code>AROS:</code> is the first result. Light colours, frosted glass over the drawer behind.</figcaption></figure>
+</div>
+</section>
+
+<section id="answers" class="section tinted"><div class="wrap">
+<div class="section-heading"><h2>It answers before you press Return.</h2><p class="section-lead">Type a calculation or a question in words and the answer is the first result. <kbd>Return</kbd> copies it to the clipboard.</p></div>
+<div class="answers">
+<ul class="examples" aria-label="Things you can type">
+<li><code>sqrt(2)</code><span>1.41421356237</span></li>
+<li><code>0x1f+1</code><span>32</span></li>
+<li><code>10 km to mi</code><span>6.21371 mi</span></li>
+<li><code>72 f in c</code><span>22.2222 °C</span></li>
+<li><code>20% off 80</code><span>64</span></li>
+<li><code>15:30 warsaw to new york</code><span>09:30 New York</span></li>
+<li><code>100 usd to pln</code><span>the day's rate</span></li>
+<li><code>weather warsaw</code><span>temperature and sky</span></li>
+</ul>
+<div class="answer-shots">
+<figure class="shot bare"><img src="assets/currency.png" width="608" height="224" loading="lazy" alt="The panel answering 100 usd to pln with 399.76 PLN and the date of the rates"><figcaption>Rates are the European Central Bank's daily reference rates. The date is shown under the answer.</figcaption></figure>
+<figure class="shot bare"><img src="assets/weather.png" width="608" height="224" loading="lazy" alt="The panel answering weather warsaw with 6 C, partly cloudy, and the day's low and high"><figcaption>Weather by Open-Meteo. Both pictures: an earlier build on mainline AROS x86_64.</figcaption></figure>
+</div>
+</div>
+<p class="note">Rates are fetched over HTTPS at most twice a day and kept for when there is no network. The request is for one public file, so nothing about you or what you typed leaves the computer. A weather question sends the city name to Open-Meteo and nothing else.</p>
+</div></section>
+
+<section id="keys" class="section wrap">
+<div class="row flip">
+<div class="row-text">
+<h2>Tab shows what else you can do.</h2>
+<p>Press <kbd>Tab</kbd> on a result for its other actions: show it in its drawer, copy its path, open a Shell there.</p>
+<p>Two of the actions give a program a shortcut of its own. An alias is a short word; typed whole, it puts that program first. A hotkey starts the program from anywhere without opening the panel. You write it the way commodities do: <code>ctrl alt w</code>, <code>lalt f5</code>, <code>ramiga t</code>.</p>
+<p>"Aliases and Hotkeys" lists everything you have set, and <kbd>Return</kbd> on a line changes or removes it.</p>
+</div>
+<div class="pair">
+<figure class="shot"><img src="assets/actions.png" width="784" height="500" loading="lazy" alt="The actions for Calculator: Open, Show in Drawer, Copy Path, Open Shell Here, Set Alias and Set Hotkey"><figcaption>The actions for Calculator.</figcaption></figure>
+<figure class="shot"><img src="assets/alias.png" width="784" height="450" loading="lazy" alt="Results for cal with the alias kk shown on the Calculator row"><figcaption>After setting the alias <code>kk</code>, the row shows it.</figcaption></figure>
+</div>
+</div>
+
+<div class="trio">
+<article>
+<figure class="shot"><img src="assets/clip.png" width="784" height="358" loading="lazy" alt="Clipboard history with three entries, the newest marked"><figcaption>Three copied answers, newest first.</figcaption></figure>
+<h3>Clipboard history</h3>
+<p>Type <code>clip</code> for the last 50 texts you copied; more letters narrow the list. <kbd>Return</kbd> puts one back on the clipboard, <kbd>Tab</kbd> deletes an entry or all of them. The history is kept in memory only. Nothing is written to a disk, so a password you copied is gone when the launcher quits.</p>
+</article>
+<article>
+<figure class="shot bare"><img src="assets/packages.png" width="608" height="162" loading="lazy" alt="The panel listing the package eza with its description and version, with Return Install in the footer"><figcaption>A package that is not installed yet. Earlier build, mainline AROS x86_64.</figcaption></figure>
+<h3>Packages from apkg</h3>
+<p>With <a href="https://github.com/tomaszstaniak/arospkg">apkg</a> installed, packages from its catalogue that you do not have yet are found by name or by a word of their description. <kbd>Return</kbd> asks once. A second <kbd>Return</kbd> installs the package in a console window.</p>
+</article>
+<article>
+<figure class="shot"><img src="assets/shell.png" width="784" height="265" loading="lazy" alt="The panel offering to run list sys: as a Shell command"><figcaption>A Shell command typed into the panel.</figcaption></figure>
+<h3>Shell commands and the system</h3>
+<p>Start the line with <code>&gt;</code> and the rest runs as a Shell command in a console of its own. "Restart Computer" and "Shut Down Computer" are found like programs and ask for a second <kbd>Return</kbd> before they act.</p>
+</article>
+</div>
+</section>
+
+<section id="widgets" class="section tinted"><div class="wrap">
+<div class="section-heading"><h2>Widgets it shares with Dockbar.</h2><p class="section-lead">Currency answers and the weather come from widgets, small packages in the format <a href="https://tomaszstaniak.github.io/aros-dockbar/">Dockbar</a> uses for its tiles and cards.</p></div>
+<div class="widgets">
+<div class="widget-text">
+<p>A widget is a drawer with a manifest, a description of its settings, a views file and a provider program. The provider fetches the data and writes a snapshot of named fields and rows. Each host shows that snapshot its own way: Dockbar draws a tile and a card, the launcher puts the same numbers into an answer.</p>
+<p>The card is described by the widget. <code>views.json</code> lists blocks such as text, trend, icon, row and list, and Dockbar lays them out. A new widget does not need a new version of the host.</p>
+<pre aria-label="The card of the Currency widget, from its views.json"><code>"expanded": [
+  { "text": "heading" },
+  { "text": "basis", "style": "muted" },
+  { "spacer": 10 },
+  { "list": "top", "max": 5, "row": [
+    { "text": "label" },
+    { "trend": "plot", "text": "detail", "align": "right" },
+    { "text": "value", "align": "right" }
+  ] }
+]</code></pre>
+<p>Currency comes with both programs. Weather comes with Dockbar, and the launcher uses it when Dockbar is installed. For now the launcher reads these two widgets; reading any installed widget is planned. You can write a widget for Dockbar today: <a href="https://github.com/tomaszstaniak/aros-dockbar/blob/main/docs/applets.md">the format is documented</a>.</p>
+</div>
+<div class="widget-shots">
+<figure class="shot bare"><img src="assets/dock-currency.png" width="462" height="276" loading="lazy" alt="Dockbar's Currency card: exchange rates in PLN for EUR, USD, GBP, CHF and JPY, each with its change since the previous day"><figcaption>The card that the block list above describes, in Dockbar 0.7.0.</figcaption></figure>
+<figure class="shot bare"><img src="assets/dock-weather.png" width="458" height="484" loading="lazy" alt="Dockbar's Weather card for Warsaw with current conditions, the next hours and a five-day forecast"><figcaption>Dockbar's Weather widget. The launcher's <code>weather warsaw</code> asks the same provider.</figcaption></figure>
+</div>
+</div>
+</div></section>
+
+<section id="themes" class="section wrap">
+<div class="section-heading"><h2>Colour themes from Limpet.</h2><p class="section-lead">The panel reads themes in the format of <a href="https://tomaszstaniak.github.io/limpet/">Limpet</a>, the AROS terminal, so the launcher and your Shell can wear the same colours.</p></div>
+<div class="theme-grid">
+<figure><img src="assets/theme-dark.png" width="644" height="380" loading="lazy" alt="The panel in its own dark colours"><figcaption>Built in, dark</figcaption></figure>
+<figure><img src="assets/theme-light.png" width="644" height="380" loading="lazy" alt="The panel in its own light colours"><figcaption>Built in, light</figcaption></figure>
+<figure><img src="assets/theme-nord.png" width="644" height="380" loading="lazy" alt="The panel in the Nord theme"><figcaption>Nord</figcaption></figure>
+<figure><img src="assets/theme-dracula.png" width="644" height="380" loading="lazy" alt="The panel in the Dracula theme"><figcaption>Dracula</figcaption></figure>
+<figure><img src="assets/theme-tokyo-night.png" width="644" height="380" loading="lazy" alt="The panel in the Tokyo Night theme"><figcaption>Tokyo Night</figcaption></figure>
+<figure><img src="assets/theme-gruvbox-dark.png" width="644" height="380" loading="lazy" alt="The panel in the Gruvbox Dark theme"><figcaption>Gruvbox Dark</figcaption></figure>
+<figure><img src="assets/theme-solarized-light.png" width="644" height="380" loading="lazy" alt="The panel in the Solarized Light theme"><figcaption>Solarized Light</figcaption></figure>
+<figure><img src="assets/theme-catppuccin-latte.png" width="644" height="380" loading="lazy" alt="The panel in the Catppuccin Latte theme"><figcaption>Catppuccin Latte</figcaption></figure>
+</div>
+<div class="cols">
+<article><h3>You do not need Limpet</h3><p>Fifteen of Limpet's themes come in the launcher's Themes drawer. If Limpet is installed, the themes in its own drawer are found by name as well. A theme file of your own works too.</p></article>
+<article><h3>Dark and light from one theme</h3><p>A theme is either dark or light. Choose the other variant and the launcher makes it: every colour keeps its hue and takes the mirrored lightness, and the text is moved until it reads clearly.</p></article>
+<article><h3>The same look as Dockbar</h3><p>Without a theme, the launcher uses the dark and light colours Dockbar has, so the two look alike on one desktop. Compact rows and the frosted glass behind the panel are switches in the settings.</p></article>
+</div>
+</section>
+
+<section id="scripts" class="section tinted"><div class="wrap">
+<div class="row">
+<div class="row-text">
+<h2>ARexx, both ways.</h2>
+<p>The launcher has a public port, <code>LAUNCHER</code>, with the commands <code>SHOW</code>, <code>HIDE</code>, <code>TOGGLE</code>, <code>RESCAN</code>, <code>VERSION</code>, <code>QUIT</code> and <code>HELP</code>. A script can open the panel with a query already typed:</p>
+<pre><code>address LAUNCHER 'SHOW calc'</code></pre>
+<p>It also sends. Type <code>rx</code> and a space, choose one of the public ports, then type the command. <kbd>Return</kbd> sends it and the answer appears under the row.</p>
+<pre><code>rx LAUNCHER VERSION</code></pre>
+</div>
+<figure class="shot"><img src="assets/rx.png" width="784" height="265" loading="lazy" alt="The panel after typing rx, listing the public port LAUNCHER"><figcaption>After <code>rx</code> the panel lists public ports. On this machine the launcher's own is the only one.</figcaption></figure>
+</div>
+</div></section>
+
+<section id="get" class="section wrap get">
+<div class="section-heading"><h2>Get it.</h2><p class="section-lead">Version 0.7.1 is being tested. The downloads will be linked here with the first public release.</p></div>
+<div class="cols">
+<article><h3>Systems</h3><p>ABIv11 distributions on x86_64, mainline AROS x86_64 (ABIv1, a nightly from 2026-11-06 or later) and the Raspberry Pi (AArch64, ABIv1). Each gets its own archive; the binaries do not cross.</p></article>
+<article><h3>What it needs</h3><p>TrueType fonts in <code>FONTS:TrueType</code> (DejaVu Sans, as installed with the system). Currency and weather need the network. Packages need apkg.</p></article>
+<article><h3>Starting it</h3><p>Double-click Launcher. Nothing appears; it waits for <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Space</kbd>. The first start from its icon also sets it up to start with the system, which you can switch off in its settings. The hotkey is the <code>CX_POPKEY</code> ToolType of the icon.</p></article>
+</div>
+</section>
+
+</main>
+
+<footer class="wrap">
+<div><a class="brand" href="#"><span class="brand-key" aria-hidden="true">L</span>Launcher</a><p>A keyboard launcher for AROS.</p></div>
+<nav aria-label="Related projects"><a href="https://tomaszstaniak.github.io/aros-dockbar/">Dockbar ↗</a><a href="https://tomaszstaniak.github.io/limpet/">Limpet ↗</a><a href="https://github.com/tomaszstaniak/arospkg">apkg ↗</a><a href="https://tomaszstaniak.com">tomaszstaniak.com ↗</a></nav>
+<p class="legal">Exchange rates: the European Central Bank's euro foreign exchange reference rates. Weather data by <a href="https://open-meteo.com/">Open-Meteo</a> (<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>). The colour themes have their own licences, listed in the Themes drawer of each archive. Screenshots were taken under QEMU.</p>
+</footer>
+
+<script>
+(function () {
+  var tabs = document.querySelectorAll('.queries button');
+  var shot = document.getElementById('demo-shot');
+  var cap = document.getElementById('demo-cap');
+  function pick(tab) {
+    tabs.forEach(function (t) { t.setAttribute('aria-selected', t === tab ? 'true' : 'false'); t.tabIndex = t === tab ? 0 : -1; });
+    shot.src = 'assets/' + tab.dataset.shot + '.png';
+    cap.textContent = tab.dataset.cap;
+  }
+  tabs.forEach(function (t, i) {
+    t.tabIndex = i ? -1 : 0;
+    t.addEventListener('click', function () { pick(t); });
+    t.addEventListener('keydown', function (e) {
+      var d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+      if (!d) return;
+      var n = tabs[(i + d + tabs.length) % tabs.length];
+      n.focus(); pick(n); e.preventDefault();
+    });
+  });
+})();
+</script>
+</body></html>
