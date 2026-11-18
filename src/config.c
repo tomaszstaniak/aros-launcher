@@ -93,6 +93,7 @@ void ln_config_free(struct ln_config *c)
     for (i = 0; i < c->folders; i++) free(c->folder[i]);
     for (i = 0; i < c->files_n; i++) free(c->files[i]);
     for (i = 0; i < c->exclude_n; i++) free(c->exclude[i]);
+    free(c->colours);
     free(c->other);
     memset(c, 0, sizeof *c);
 }
@@ -157,6 +158,11 @@ int ln_config_parse(struct ln_config *c, const char *text, size_t n)
             c->dark = 0;
         } else if (eq && klen == 5 && !memcmp(line, "theme", 5) && len - 6 == 4 && !memcmp(eq + 1, "dark", 4)) {
             c->dark = 1;
+        } else if (eq && klen == 7 && !memcmp(line, "colours", 7)) {
+            char *p = clean(eq + 1, len - 8);
+            if (!p) return 0;
+            free(c->colours);
+            c->colours = p;
         } else if (eq && klen == 7 && !memcmp(line, "compact", 7) && len == 9 && (eq[1] == '0' || eq[1] == '1')) {
             c->compact = eq[1] == '1';
         } else if (eq && klen == 5 && !memcmp(line, "glass", 5) && len == 7 && (eq[1] == '0' || eq[1] == '1')) {
@@ -172,7 +178,7 @@ int ln_config_parse(struct ln_config *c, const char *text, size_t n)
 
 char *ln_config_text(const struct ln_config *c, size_t *n)
 {
-    size_t cap = 128 + (c->other ? strlen(c->other) : 0), len = 0;
+    size_t cap = 144 + (c->other ? strlen(c->other) : 0) + (c->colours ? strlen(c->colours) : 0), len = 0;
     char *out;
     int i;
     for (i = 0; i < c->folders; i++) cap += strlen(c->folder[i]) + 9;
@@ -184,6 +190,7 @@ char *ln_config_text(const struct ln_config *c, size_t *n)
     for (i = 0; i < c->exclude_n; i++) len += (size_t)snprintf(out + len, cap - len, "exclude=%s\n", c->exclude[i]);
     len += (size_t)snprintf(out + len, cap - len, "theme=%s\ncompact=%d\nglass=%d\n",
                             c->dark ? "dark" : "light", c->compact, c->glass);
+    if (c->colours && *c->colours) len += (size_t)snprintf(out + len, cap - len, "colours=%s\n", c->colours);
     if (c->autostart >= 0) len += (size_t)snprintf(out + len, cap - len, "autostart=%d\n", c->autostart);
     if (c->other) len += (size_t)snprintf(out + len, cap - len, "%s", c->other);
     if (n) *n = len;

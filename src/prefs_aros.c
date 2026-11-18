@@ -11,6 +11,7 @@
 #include <proto/intuition.h>
 #include <proto/muimaster.h>
 #include <clib/alib_protos.h>
+#include <stdlib.h>
 
 /* Opened only while the window is shown: the program runs all the time
  * and has no use for Zune otherwise. */
@@ -78,7 +79,7 @@ int ln_prefs_run(struct ln_config *c, const struct ln_about *about, int page)
     static const char *themes[] = { "Dark", "Light", NULL };
     static const char *pages[] = { "Programs", "Files", "Look", "General", "About", NULL };
     static char facts[400], title[80], known[200], values[300];
-    Object *app, *win, *reg, *programs, *files, *exclude, *pattern, *theme, *compact, *glass, *start;
+    Object *app, *win, *reg, *programs, *files, *exclude, *pattern, *theme, *colours, *compact, *glass, *start;
     Object *add_p, *rem_p, *add_f, *rem_f, *add_xd, *add_xp, *rem_x, *save, *cancel;
     int saved = 0, running = 1, i;
     ULONG sigs = 0;
@@ -139,11 +140,18 @@ int ln_prefs_run(struct ln_config *c, const struct ln_about *about, int page)
                         Child, (IPTR)(ColGroup(2),
                             Child, (IPTR)Label1("Theme"),
                             Child, (IPTR)(theme = CycleObject, MUIA_Cycle_Entries, (IPTR)themes, MUIA_CycleChain, 1, End),
+                            Child, (IPTR)Label1("Colours"),
+                            Child, (IPTR)(colours = StringObject, StringFrame, MUIA_String_MaxLen, 200, MUIA_CycleChain, 1, End),
                             Child, (IPTR)Label1("Compact rows"),
                             Child, (IPTR)(HGroup, Child, (IPTR)(compact = checkmark(c->compact)), Child, (IPTR)HSpace(0), End),
                             Child, (IPTR)Label1("Frosted glass"),
                             Child, (IPTR)(HGroup, Child, (IPTR)(glass = checkmark(c->glass)), Child, (IPTR)HSpace(0), End),
                         End),
+                        Child, (IPTR)(TextObject, MUIA_Text_Contents, (IPTR)
+                            "Colours: the name of a theme in the Themes drawer (nord, dracula,\n"
+                            "gruvbox-dark, solarized-light, catppuccin-latte, tokyo-night...) or a\n"
+                            "theme file. Empty: the launcher's own colours. Dark or Light above picks\n"
+                            "the variant; the one a theme lacks is made from it.", End),
                         Child, (IPTR)VSpace(0),
                     End),
                     /* General */
@@ -192,6 +200,7 @@ int ln_prefs_run(struct ln_config *c, const struct ln_about *about, int page)
     fill(files, c->files, c->files_n);
     fill(exclude, c->exclude, c->exclude_n);
     set(theme, MUIA_Cycle_Active, c->dark ? 0 : 1);
+    set(colours, MUIA_String_Contents, (IPTR)(c->colours ? c->colours : ""));
     if (page >= 0 && page <= 4) set(reg, MUIA_Group_ActivePage, page);
     DoMethod(win, MUIM_Notify, MUIA_Window_CloseRequest, TRUE, (IPTR)app, 2, MUIM_Application_ReturnID, ID_CANCEL);
     DoMethod(save, MUIM_Notify, MUIA_Pressed, FALSE, (IPTR)app, 2, MUIM_Application_ReturnID, ID_SAVE);
@@ -243,6 +252,11 @@ int ln_prefs_run(struct ln_config *c, const struct ln_about *about, int page)
                 if (text) ln_config_add_exclude(c, text);
             }
             c->dark = xget(theme, MUIA_Cycle_Active) == 0;
+            {
+                const char *typed = (const char *)xget(colours, MUIA_String_Contents);
+                char *copy = strdup(typed ? typed : "");
+                if (copy) { free(c->colours); c->colours = copy; }
+            }
             c->compact = xget(compact, MUIA_Selected) != 0;
             c->glass = xget(glass, MUIA_Selected) != 0;
             c->autostart = xget(start, MUIA_Selected) != 0;

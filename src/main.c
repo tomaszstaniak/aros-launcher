@@ -42,6 +42,7 @@
 #include "config.h"
 #include "shortcuts.h"
 #include "cliphist.h"
+#include "theme.h"
 #include "clipwatch_aros.h"
 #include "dockbar/widgets.h"
 #include "convert.h"
@@ -63,7 +64,7 @@
 #include "zk_present.h"
 #include "zk_text_aros.h"
 
-static const char version[] __attribute__((used)) = "$VER: Launcher 0.6 (18.11.2026)";
+static const char version[] __attribute__((used)) = "$VER: Launcher 0.7 (18.11.2026)";
 
 #define EVT_HOTKEY 1
 #define EVT_SHORTCUT 100      /* and the next LN_SHORTCUTS_MAX: the hotkeys of results */
@@ -961,6 +962,37 @@ static const struct action *actions_of(int source, unsigned key)
     }
 }
 
+/* ---- colours from a theme file ---- */
+static struct ln_theme colour_theme;
+static int colour_theme_on;
+static struct ln_style themed_style;
+
+/* Reads the theme the settings name: a file, or a name looked up among
+ * Limpet's themes and in the launcher's own Themes drawer. */
+static void theme_load(void)
+{
+    static const char *const places[] = { "%s", "PROGDIR:Themes/%s.theme", "PROGDIR:Themes/%s", "ENVARC:Limpet/Themes/%s.theme", "ENVARC:Limpet/Themes/%s" };
+    const char *name = app.cfg.colours;
+    size_t i, n;
+    APTR was;
+    colour_theme_on = 0;
+    if (!name || !*name) return;
+    was = quiet();
+    for (i = 0; i < sizeof places / sizeof places[0] && !colour_theme_on; i++) {
+        char path[400], *text;
+        /* a bare name is not a file in the current drawer */
+        if (!i && !strchr(name, ':') && !strchr(name, '/')) continue;
+        if (snprintf(path, sizeof path, places[i], name) >= (int)sizeof path) continue;
+        if ((text = read_file(path, &n))) {
+            colour_theme_on = ln_theme_parse(text, n, &colour_theme);
+            free(text);
+            if (colour_theme_on) note("colours from '%s' (%s theme)", path, ln_theme_dark(&colour_theme) ? "a dark" : "a light");
+        }
+    }
+    loud(was);
+    if (!colour_theme_on) note("colours '%s' not found or not a theme", name);
+}
+
 /* ---- aliases and hotkeys of results ---- */
 static CxObj *hotkey_filters[LN_SHORTCUTS_MAX];
 
@@ -1586,6 +1618,11 @@ static int open_panel(const char *footer)
     int compose, left, top, y;
     if (p->win) return 1;
     p->style = ln_style_get(app.cfg.dark, app.cfg.compact);
+    if (colour_theme_on) {
+        themed_style = *p->style;
+        ln_theme_apply(&colour_theme, app.cfg.dark, &themed_style);
+        p->style = &themed_style;
+    }
     if (!open_fonts(p)) { note("open failed: fonts"); return 0; }
     snapshot_windows();
     snapshot_ports();
@@ -2235,6 +2272,7 @@ static void open_settings(void)
     about.rates_date = app.rates.date;
     if (ln_prefs_run(&app.cfg, &about, app.prefs_page)) {
         save_config();
+        theme_load();
         if (app.cfg.autostart != ln_autostart_on()) {
             int ok = ln_autostart_set(app.cfg.autostart, app.program);
             note("autostart %d ok=%d", app.cfg.autostart, ok);
@@ -2360,6 +2398,7 @@ int main(int argc, char **argv)
         loud(was);
     }
     hotkeys_register();
+    theme_load();
     {
         /* the clipboard's history starts with what is on it now */
         BYTE bit = AllocSignal(-1);

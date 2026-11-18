@@ -6,6 +6,8 @@
  *   exclude=Work:Documents/Old  a folder left out of the file index, with all below it
  *   exclude=#?.bak              or a name pattern (AmigaDOS) for entries left out anywhere
  *   theme=dark | light
+ *   colours=nord                a colour theme in Limpet's format: a name (looked up in
+ *                               ENVARC:Limpet/Themes) or a file; none: the built-in colours
  *   compact=0 | 1
  *   glass=0 | 1
  *   autostart=0 | 1
@@ -27,6 +29,7 @@ struct ln_config {
     char *exclude[LN_FOLDERS_MAX];  /* folders and name patterns kept out of the file index */
     int exclude_n;
     int dark, compact, glass;
+    char *colours;      /* a colour theme: a name or a file; NULL or "" none */
     int autostart;      /* start with the system: 1, 0, or -1 not decided yet */
     char *other;        /* lines kept as they were, each ending in a line feed */
 };

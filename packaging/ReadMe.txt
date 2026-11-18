@@ -129,6 +129,20 @@ then the command:
 Return sends it; the answer appears under the row.
 
 
+Colours
+
+Settings, Look, "Colours": the name of a theme from the Themes drawer
+beside the program (nord, dracula, gruvbox-dark, one-dark, tokyo-night,
+rose-pine, catppuccin-mocha, catppuccin-latte, solarized-dark,
+solarized-light, magicwb, amigaos31, high-contrast, dark, light), or a
+theme file of your own. Empty means the launcher's own colours. The
+themes are the Limpet terminal's; with Limpet installed, the themes in
+its own drawer are found by name too.
+
+"Theme" (Dark or Light) picks the variant. A theme has one of them; the
+other is made from it, with the same hues.
+
+
 Clipboard history
 
   clip            the texts that were on the clipboard, newest first

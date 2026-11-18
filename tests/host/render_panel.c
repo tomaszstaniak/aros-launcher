@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "draw.h"
+#include "theme.h"
 
 static unsigned long crc_table[256];
 
@@ -106,9 +107,13 @@ static void blur(unsigned char *argb, int w, int h, int rad)
 
 static int calc_mode;
 
+/* When set, the pictures take their colours from this theme. */
+static const struct ln_theme *render_theme;
+
 static void one(const char *dir, const char *name, const char *font, int dark, int compact, int glass)
 {
-    const struct ln_style *s = ln_style_get(dark, compact);
+    struct ln_style themed = *ln_style_get(dark, compact);
+    const struct ln_style *s = &themed;
     enum { W = 900, H = 520 };
     int shadow = glass ? 28 : 0, x, y, ox, oy, i;
     struct ln_fonts f;
@@ -119,6 +124,7 @@ static void one(const char *dir, const char *name, const char *font, int dark, i
     unsigned char *rgb = malloc(W * H * 3), *pic, *back = NULL;
     char path[512];
     unsigned q = ln_results_query(r);
+    if (render_theme) ln_theme_apply(render_theme, dark, &themed);
     static const char *titles[5] = { "WordCraft", "Password Safe", "Wordbook", "Sword of Fargoal", "Crossword" };
     static const char *subs[5] = { "SYS:Apps/WordCraft", "SYS:Utilities", "Work:Tools/Wordbook", "Work:Games/Fargoal", "Work:Games" };
     static const unsigned short at[5] = { 0, 4, 0, 1, 5 };
@@ -189,5 +195,31 @@ int main(int argc, char **argv)
     one(argv[2], "calc", argv[1], 1, 0, 1);
     one(argv[2], "calc-light", argv[1], 0, 0, 1);
     one(argv[2], "calc-compact", argv[1], 1, 1, 1);
+    calc_mode = 0;
+    /* LN_THEMES names theme files (Limpet's format), separated by ':':
+       each gives <name>-dark.png and <name>-light.png, one of them made
+       from the other */
+    if (getenv("LN_THEMES")) {
+        char *list = strdup(getenv("LN_THEMES")), *file;
+        for (file = strtok(list, ":"); file; file = strtok(NULL, ":")) {
+            static char text[16384];
+            struct ln_theme t;
+            char name[160], *base = strrchr(file, '/'), *dot;
+            FILE *f = fopen(file, "rb");
+            size_t n = f ? fread(text, 1, sizeof text, f) : 0;
+            if (f) fclose(f);
+            if (!ln_theme_parse(text, n, &t)) { fprintf(stderr, "not a theme: %s\n", file); continue; }
+            snprintf(name, sizeof name - 8, "theme-%s", base ? base + 1 : file);
+            if ((dot = strrchr(name, '.'))) *dot = 0;
+            dot = name + strlen(name);
+            render_theme = &t;
+            strcpy(dot, ln_theme_dark(&t) ? "-dark" : "-dark-made");
+            one(argv[2], name, argv[1], 1, 0, 1);
+            strcpy(dot, ln_theme_dark(&t) ? "-light-made" : "-light");
+            one(argv[2], name, argv[1], 0, 0, 1);
+            render_theme = NULL;
+        }
+        free(list);
+    }
     return 0;
 }
