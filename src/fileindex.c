@@ -16,6 +16,7 @@ struct ln_fileindex {
     int n, cap;
     struct block *blocks;
     const char *last_dir;
+    int full;
 };
 
 #define BLOCK (256 * 1024)
@@ -54,7 +55,8 @@ int ln_fileindex_add(struct ln_fileindex *x, const char *dir, const char *name, 
 {
     size_t len = strlen(name);
     const char *d, *nm;
-    if (x->n >= LN_FILES_MAX || !len) return 0;
+    if (!len) return 0;
+    if (x->n >= LN_FILES_MAX) { x->full = 1; return 0; }
     if (x->n == x->cap) {
         int cap = x->cap ? x->cap * 2 : 4096;
         struct entry *g = realloc(x->e, sizeof *g * (size_t)cap);
@@ -74,6 +76,39 @@ int ln_fileindex_add(struct ln_fileindex *x, const char *dir, const char *name, 
 }
 
 static int lower(int c) { return c >= 'A' && c <= 'Z' ? c + 32 : c; }
+
+int ln_fileindex_full(const struct ln_fileindex *x) { return x->full; }
+
+/* Whether dir is folder or lies below it. */
+static int under(const char *dir, const char *folder)
+{
+    size_t n = strlen(folder);
+    size_t i;
+    while (n && folder[n - 1] == '/') n--;
+    for (i = 0; i < n; i++)
+        if (lower((unsigned char)dir[i]) != lower((unsigned char)folder[i])) return 0;
+    return !dir[n] || dir[n] == '/' || (n && folder[n - 1] == ':');
+}
+
+int ln_fileindex_keep(struct ln_fileindex *x, const struct ln_fileindex *src, const char *folder)
+{
+    int i, kept = 0;
+    if (!src) return 0;
+    for (i = 0; i < src->n; i++) {
+        const struct entry *e = &src->e[i];
+        if (!under(e->dir, folder)) continue;
+        if (!ln_fileindex_add(x, e->dir, e->name, e->is_dir)) return -1;
+        kept++;
+    }
+    return kept;
+}
+
+unsigned ln_path_hash(const char *path)
+{
+    unsigned h = 2166136261u;
+    while (*path) { h ^= (unsigned char)*path++; h *= 16777619u; }
+    return h;
+}
 
 /* Where word (lower case, wn bytes) occurs in name, -1 when it does not. */
 static int find(const char *name, const char *word, size_t wn)

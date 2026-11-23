@@ -9,7 +9,8 @@
 #include <exec/ports.h>
 
 enum { LN_SCAN_BEGIN = 1, LN_SCAN_PUT, LN_SCAN_END, LN_SCAN_EXIT, LN_SCAN_PACKAGES, LN_SCAN_RAN,
-       LN_SCAN_FILES_BEGIN, LN_SCAN_FILES, LN_SCAN_FILES_END };
+       LN_SCAN_FILES_BEGIN, LN_SCAN_FILES, LN_SCAN_FILES_END,
+       LN_SCAN_FILES_KEEP      /* path: a folder that could not be reached; keep what was known of it */ };
 
 /* Where the scanner leaves apkg's list of packages for the main task. */
 #define LN_PACKAGES_FILE "T:Jumpstart-packages.json"

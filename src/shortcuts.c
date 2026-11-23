@@ -75,12 +75,12 @@ int ln_shortcuts_set(struct ln_shortcuts *s, char kind, const char *key, const c
     char k[80];
     char *nk, *nt, *nn;
     int i, has = ln_shortcut_key(key, k, sizeof k), mine = -1, theirs = -1;
-    if (kind != LN_ALIAS && kind != LN_HOTKEY) return 0;
+    if (kind != LN_ALIAS && kind != LN_HOTKEY && kind != LN_PIN) return 0;
     if (!target || !*target) return 0;
     for (i = 0; i < s->n; i++) {
         if (s->v[i].kind != kind) continue;
         if (same(s->v[i].target, target)) mine = i;
-        else if (has && !strcmp(s->v[i].key, k)) theirs = i;
+        else if (kind != LN_PIN && has && !strcmp(s->v[i].key, k)) theirs = i;     /* a pin's key is not a name */
     }
     if (!has) {
         if (*key) {
@@ -133,7 +133,8 @@ int ln_shortcuts_parse(struct ln_shortcuts *s, const char *text, size_t n)
             line = tab + 1;
         }
         if (fields >= 3 && len[1] && len[1] < 80 && len[2]) {
-            char kind = len[0] == 5 && !memcmp(f[0], "alias", 5) ? LN_ALIAS : len[0] == 6 && !memcmp(f[0], "hotkey", 6) ? LN_HOTKEY : 0;
+            char kind = len[0] == 5 && !memcmp(f[0], "alias", 5) ? LN_ALIAS : len[0] == 6 && !memcmp(f[0], "hotkey", 6) ? LN_HOTKEY
+                      : len[0] == 3 && !memcmp(f[0], "pin", 3) ? LN_PIN : 0;
             char *key = copy(f[1], len[1]), *target = copy(f[2], len[2]), *title = copy(fields > 3 ? f[3] : "", fields > 3 ? len[3] : 0);
             int ok = key && target && title;
             if (ok && kind) ok = ln_shortcuts_set(s, kind, key, target, title) || s->n >= LN_SHORTCUTS_MAX;
@@ -152,7 +153,7 @@ char *ln_shortcuts_text(const struct ln_shortcuts *s, size_t *n)
     for (i = 0; i < s->n; i++) cap += strlen(s->v[i].key) + strlen(s->v[i].target) + strlen(s->v[i].title) + 12;
     if (!(out = malloc(cap))) return NULL;
     for (i = 0; i < s->n; i++)
-        k += (size_t)snprintf(out + k, cap - k, "%s\t%s\t%s\t%s\n", s->v[i].kind == LN_ALIAS ? "alias" : "hotkey",
+        k += (size_t)snprintf(out + k, cap - k, "%s\t%s\t%s\t%s\n", s->v[i].kind == LN_ALIAS ? "alias" : s->v[i].kind == LN_PIN ? "pin" : "hotkey",
                               s->v[i].key, s->v[i].target, s->v[i].title);
     out[k] = 0;
     if (n) *n = k;

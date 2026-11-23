@@ -52,5 +52,19 @@ int main(void)
         free(huge);
     }
     ln_cliphist_clear(&h);
+    {
+        /* a word in a later line is found, and that line is shown */
+        struct ln_cliphist h2;
+        char line[64];
+        const char *t = "Dear Anna,\n\nthe Invoice 2026-11 is attached.\nRegards";
+        memset(&h2, 0, sizeof h2);
+        assert(ln_cliphist_add(&h2, t, strlen(t), 1));
+        assert(ln_cliphist_search(&h2.v[0], "invoice", 7, line, sizeof line));
+        assert(!strcmp(line, "the Invoice 2026-11 is attached."));
+        assert(ln_cliphist_search(&h2.v[0], "dear", 4, line, sizeof line) && !strcmp(line, "Dear Anna,"));
+        assert(!ln_cliphist_search(&h2.v[0], "missing", 7, line, sizeof line));
+        assert(!ln_cliphist_search(&h2.v[0], "", 0, line, sizeof line));
+        ln_cliphist_clear(&h2);
+    }
     return 0;
 }

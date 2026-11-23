@@ -57,5 +57,24 @@ int main(void)
     assert(ln_shortcuts_set(&t, LN_ALIAS, "k0", "T:5", "") && t.n == LN_SHORTCUTS_MAX - 1);
     ln_shortcuts_free(&t);
     ln_shortcuts_free(&s);
+    {
+        /* pins: several with the same key, kept through text and back, removed by an empty key */
+        struct ln_shortcuts a, b;
+        size_t n;
+        char *text;
+        memset(&a, 0, sizeof a); memset(&b, 0, sizeof b);
+        assert(ln_shortcuts_set(&a, LN_PIN, "file", "Work:Docs/a.txt", "a.txt") && a.n == 1);
+        assert(ln_shortcuts_set(&a, LN_PIN, "file", "Work:Docs/b.txt", "b.txt") && a.n == 2);
+        assert(ln_shortcuts_set(&a, LN_PIN, "drawer", "Work:Projects", "Projects") && a.n == 3);
+        assert(ln_shortcuts_set(&a, LN_ALIAS, "file", "SYS:Tools/Calculator", "Calculator") && a.n == 4);
+        assert(!strcmp(ln_shortcuts_key_of(&a, LN_PIN, "work:docs/B.txt"), "file"));
+        text = ln_shortcuts_text(&a, &n);
+        assert(text && ln_shortcuts_parse(&b, text, n) && b.n == 4);
+        free(text);
+        assert(!strcmp(ln_shortcuts_key_of(&b, LN_PIN, "Work:Projects"), "drawer"));
+        assert(ln_shortcuts_set(&b, LN_PIN, "", "Work:Docs/a.txt", "") && b.n == 3);
+        assert(!ln_shortcuts_key_of(&b, LN_PIN, "Work:Docs/a.txt"));
+        ln_shortcuts_free(&a); ln_shortcuts_free(&b);
+    }
     return 0;
 }

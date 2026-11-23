@@ -19,9 +19,10 @@
 #define LN_SHORTCUTS_MAX 64
 #define LN_ALIAS 'a'
 #define LN_HOTKEY 'h'
+#define LN_PIN 'p'          /* a pinned target; its key says what it is: program, file, drawer */
 
 struct ln_shortcut {
-    char kind;          /* LN_ALIAS or LN_HOTKEY */
+    char kind;          /* LN_ALIAS, LN_HOTKEY or LN_PIN */
     char *key;          /* lower case, single spaces */
     char *target;
     char *title;        /* the target's name for people */

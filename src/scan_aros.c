@@ -31,20 +31,23 @@ struct ln_scan {
     char **pattern;             /* the patterns, parsed; NULL for a path */
     char command[1200];         /* set by the main task before it signals CTRL_D */
     volatile LONG busy;         /* a command is waiting or running */
+    struct ln_scan_msg *last;   /* the exit message, made before the process starts */
 };
 
 static ULONG len(const char *s) { ULONG n = 0; while (s[n]) n++; return n; }
 
-static void send(struct ln_scan *s, LONG kind, const char *path, const char *title)
+/* 0 when there was no memory for the message. */
+static int send(struct ln_scan *s, LONG kind, const char *path, const char *title)
 {
     ULONG pn = path ? len(path) + 1 : 0, tn = title ? len(title) + 1 : 0;
     struct ln_scan_msg *m = AllocVec(sizeof *m + pn + tn, MEMF_PUBLIC | MEMF_CLEAR);
-    if (!m) return;
+    if (!m) return 0;
     m->m.mn_Length = (UWORD)sizeof *m;
     m->kind = kind;
     if (path) { m->path = (char *)(m + 1); CopyMem((APTR)path, m->path, pn); }
     if (title) { m->title = (char *)(m + 1) + pn; CopyMem((APTR)title, m->title, tn); }
     PutMsg(s->to, &m->m);
+    return 1;
 }
 
 static int stopping(void) { return (SetSignal(0, 0) & SIGBREAKF_CTRL_C) != 0; }
@@ -84,25 +87,30 @@ static int is_script(const struct DiskObject *icon)
     return part[5] == 0;
 }
 
-static void walk(struct ln_scan *s, const char *dir, int depth)
+/* 0 when something of the folder may be missing from what was sent. */
+static int walk(struct ln_scan *s, const char *dir, int depth)
 {
+    int whole = 1;
     struct FileInfoBlock *fib;
     char *path;
     BPTR lock;
-    if (!(lock = Lock((CONST_STRPTR)dir, SHARED_LOCK))) return;
+    /* a folder that is not there has no programs; one that cannot be read
+       for another reason (its volume is away) keeps what was known */
+    if (!(lock = Lock((CONST_STRPTR)dir, SHARED_LOCK))) return depth > 0 || IoErr() == ERROR_OBJECT_NOT_FOUND;
     fib = AllocDosObject(DOS_FIB, NULL);
     path = AllocVec(PATH_MAX_LEN, MEMF_PUBLIC);
+    if (!fib || !path) whole = 0;
     if (fib && path && Examine(lock, fib) && fib->fib_DirEntryType > 0) {
         while (!stopping() && ExNext(lock, fib)) {
             const char *name = (const char *)fib->fib_FileName;
             if (!join(path, dir, name)) continue;
             if (fib->fib_DirEntryType > 0) {
-                if (depth < 1) walk(s, path, depth + 1);
+                if (depth < 1 && !walk(s, path, depth + 1)) whole = 0;
             } else if (!is_info(name)) {
                 /* GetDiskObject reads <path>.info: no icon file, no program */
                 struct DiskObject *icon = GetDiskObject((CONST_STRPTR)path);
                 if (icon) {
-                    if (icon->do_Type == WBTOOL || is_script(icon)) send(s, LN_SCAN_PUT, path, name);
+                    if ((icon->do_Type == WBTOOL || is_script(icon)) && !send(s, LN_SCAN_PUT, path, name)) whole = 0;
                     FreeDiskObject(icon);
                 }
             }
@@ -111,14 +119,16 @@ static void walk(struct ln_scan *s, const char *dir, int depth)
     if (path) FreeVec(path);
     if (fib) FreeDosObject(DOS_FIB, fib);
     UnLock(lock);
+    return whole;
 }
 
 static void scan_folder(struct ln_scan *s, int i)
 {
-    send(s, LN_SCAN_BEGIN, s->folder[i], NULL);
-    walk(s, s->folder[i], 0);
-    /* a scan cut short must not make programs vanish */
-    if (!stopping()) send(s, LN_SCAN_END, s->folder[i], NULL);
+    int whole;
+    if (!send(s, LN_SCAN_BEGIN, s->folder[i], NULL)) return;
+    whole = walk(s, s->folder[i], 0);
+    /* a scan cut short or incomplete must not make programs vanish */
+    if (whole && !stopping()) send(s, LN_SCAN_END, s->folder[i], NULL);
 }
 
 /* --- the file index ------------------------------------------------------- */
@@ -146,16 +156,20 @@ static int excluded(struct ln_scan *s, const char *path, const char *name)
     return 0;
 }
 
-/* Sends what was gathered of one drawer and starts again. */
-static void flush(struct ln_scan *s, const char *dir, char *blob, ULONG *used)
+/* Sends what was gathered of one drawer and starts again. 0 when it was lost. */
+static int flush(struct ln_scan *s, const char *dir, char *blob, ULONG *used)
 {
-    if (!*used) return;
+    int ok;
+    if (!*used) return 1;
     blob[*used] = 0;
-    send(s, LN_SCAN_FILES, dir, blob);
+    ok = send(s, LN_SCAN_FILES, dir, blob);
     *used = 0;
+    return ok;
 }
 
-/* Walks dir and everything below it. 0 when it was cut short. */
+/* Walks dir and everything below it. 0 when it was cut short or something
+ * of it could not be read or sent. A drawer below that has gone meanwhile is
+ * empty; the folder itself (depth 0) is the caller's to check. */
 static int walk_files(struct ln_scan *s, const char *dir, int depth, char *blob)
 {
     struct FileInfoBlock *fib;
@@ -163,9 +177,10 @@ static int walk_files(struct ln_scan *s, const char *dir, int depth, char *blob)
     BPTR lock;
     ULONG used = 0;
     int whole = 1;
-    if (!(lock = Lock((CONST_STRPTR)dir, SHARED_LOCK))) return 1;
+    if (!(lock = Lock((CONST_STRPTR)dir, SHARED_LOCK))) return depth > 0 && IoErr() == ERROR_OBJECT_NOT_FOUND;
     fib = AllocDosObject(DOS_FIB, NULL);
     path = AllocVec(PATH_MAX_LEN, MEMF_PUBLIC);
+    if (!fib || !path) whole = 0;
     if (fib && path && Examine(lock, fib) && fib->fib_DirEntryType > 0) {
         while (ExNext(lock, fib)) {
             const char *name = (const char *)fib->fib_FileName;
@@ -175,13 +190,13 @@ static int walk_files(struct ln_scan *s, const char *dir, int depth, char *blob)
             /* icons belong to their files; names starting with a dot are kept out */
             if (!nn || name[0] == '.' || (!is_dir && is_info(name))) continue;
             if (s->exclude_n && (!join(path, dir, name) || excluded(s, path, name))) continue;
-            if (used + nn + 3 >= BLOB) flush(s, dir, blob, &used);
+            if (used + nn + 3 >= BLOB && !flush(s, dir, blob, &used)) { whole = 0; break; }
             blob[used++] = is_dir ? 'D' : 'F';
             CopyMem((APTR)name, blob + used, nn);
             used += nn;
             blob[used++] = '\n';
         }
-        flush(s, dir, blob, &used);
+        if (!flush(s, dir, blob, &used)) whole = 0;
         /* the drawers below, after this one's entries went out: the blob is free again */
         if (whole && depth < DEPTH_MAX && Examine(lock, fib)) {
             while (whole && ExNext(lock, fib)) {
@@ -203,11 +218,21 @@ static void index_files(struct ln_scan *s)
     char *blob = AllocVec(BLOB + 4, MEMF_PUBLIC);
     int i, whole = 1;
     if (!blob) return;
-    send(s, LN_SCAN_FILES_BEGIN, NULL, NULL);
-    for (i = 0; i < s->files_n && whole; i++)
-        if (!excluded(s, s->files[i], "")) whole = walk_files(s, s->files[i], 0, blob);
-    /* a walk cut short must not replace a whole index */
-    if (whole) send(s, LN_SCAN_FILES_END, NULL, NULL);
+    if (!send(s, LN_SCAN_FILES_BEGIN, NULL, NULL)) { FreeVec(blob); return; }
+    for (i = 0; i < s->files_n && whole; i++) {
+        BPTR lock;
+        if (excluded(s, s->files[i], "")) continue;
+        if ((lock = Lock((CONST_STRPTR)s->files[i], SHARED_LOCK))) {
+            UnLock(lock);
+            whole = walk_files(s, s->files[i], 0, blob);
+        } else {
+            /* the folder cannot be reached (its volume is away, or it is
+               gone): what was known of it stays in the index */
+            whole = send(s, LN_SCAN_FILES_KEEP, s->files[i], NULL);
+        }
+    }
+    /* a walk cut short or incomplete must not replace a whole index */
+    if (whole && !stopping()) send(s, LN_SCAN_FILES_END, NULL, NULL);
     FreeVec(blob);
 }
 
@@ -295,7 +320,7 @@ static void entry(void)
     }
     /* The last thing this process does; the main task waits for it. */
     Forbid();
-    send(s, LN_SCAN_EXIT, NULL, NULL);
+    PutMsg(s->to, &s->last->m);
 }
 
 void ln_scan_free_msg(struct ln_scan_msg *m) { FreeVec(m); }
@@ -320,6 +345,7 @@ static void free_scan(struct ln_scan *s)
     if (s->pattern) FreeVec(s->pattern);
     if (s->notify) FreeVec(s->notify);
     if (s->dirty) FreeVec(s->dirty);
+    if (s->last) FreeVec(s->last);
     FreeVec(s);
 }
 
@@ -334,7 +360,13 @@ struct ln_scan *ln_scan_start(struct MsgPort *to, char *const *folders, int n, c
     s->folder = AllocVec(sizeof(char *) * (ULONG)(n + 1), MEMF_PUBLIC | MEMF_CLEAR);
     s->notify = AllocVec(sizeof(struct NotifyRequest) * (ULONG)(n + 1), MEMF_PUBLIC | MEMF_CLEAR);
     s->dirty = AllocVec((ULONG)(n + 1), MEMF_PUBLIC | MEMF_CLEAR);
-    if (!s->folder || !s->notify || !s->dirty) { free_scan(s); return NULL; }
+    /* the scanner's last message exists before it starts, so that it can
+       always say that it has gone */
+    if ((s->last = AllocVec(sizeof *s->last, MEMF_PUBLIC | MEMF_CLEAR))) {
+        s->last->m.mn_Length = (UWORD)sizeof *s->last;
+        s->last->kind = LN_SCAN_EXIT;
+    }
+    if (!s->folder || !s->notify || !s->dirty || !s->last) { free_scan(s); return NULL; }
     for (i = 0; i < n; i++) {
         ULONG k = len(folders[i]) + 1;
         if (!(s->folder[i] = AllocVec(k, MEMF_PUBLIC))) { free_scan(s); return NULL; }
@@ -410,7 +442,7 @@ void ln_scan_stop(struct ln_scan *s)
         while ((m = (struct ln_scan_msg *)GetMsg(s->to))) {
             /* only scanner messages can arrive here: the caller has taken
                its other senders off the port before stopping the scanner */
-            if (m->kind == LN_SCAN_EXIT) gone = 1;
+            if (m->kind == LN_SCAN_EXIT) { gone = 1; s->last = NULL; }
             ln_scan_free_msg(m);
         }
     }

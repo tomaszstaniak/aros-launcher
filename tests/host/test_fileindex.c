@@ -97,5 +97,25 @@ int main(void)
         assert(q("aaaa", 8) == 1);
     }
     ln_fileindex_free(x);
+    {
+        /* a folder that cannot be walked keeps its entries; names that
+           differ only in a character of the same letter column are two files */
+        struct ln_fileindex *old = ln_fileindex_new(), *fresh = ln_fileindex_new();
+        struct ln_file f[4];
+        assert(ln_fileindex_add(old, "Work:Docs", "a.txt", 0));
+        assert(ln_fileindex_add(old, "Work:Docs/Sub", "b.txt", 0));
+        assert(ln_fileindex_add(old, "Work:Docs2", "c.txt", 0));
+        assert(ln_fileindex_add(old, "Other:", "d.txt", 0));
+        assert(ln_fileindex_keep(fresh, old, "work:docs/") == 2);
+        assert(ln_fileindex_count(fresh) == 2);
+        assert(ln_fileindex_query(fresh, "c.txt", 5, f, 4) == 0);
+        assert(ln_fileindex_keep(fresh, old, "Other:") == 1);
+        assert(ln_fileindex_keep(fresh, NULL, "Other:") == 0);
+        assert(!ln_fileindex_full(fresh));
+        assert(ln_path_hash("Work:raport[1].txt") != ln_path_hash("Work:raport{1}.txt"));
+        assert(ln_path_hash("Work:a") == ln_path_hash("Work:a"));
+        ln_fileindex_free(old);
+        ln_fileindex_free(fresh);
+    }
     return 0;
 }

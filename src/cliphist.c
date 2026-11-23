@@ -91,3 +91,30 @@ void ln_cliphist_title(const struct ln_clip *c, char *out, size_t cap)
     }
     out[k] = 0;
 }
+
+static int fold(int ch) { return ch >= 'A' && ch <= 'Z' ? ch + 32 : ch; }
+
+int ln_cliphist_search(const struct ln_clip *c, const char *q, size_t qn, char *line, size_t cap)
+{
+    size_t i, k, from, to;
+    struct ln_clip part;
+    if (!qn || qn > c->n) return 0;
+    for (i = 0; i + qn <= c->n; i++) {
+        for (k = 0; k < qn && fold((unsigned char)c->text[i + k]) == fold((unsigned char)q[k]); k++) ;
+        if (k == qn) break;
+    }
+    if (i + qn > c->n) return 0;
+    for (from = i; from > 0 && c->text[from - 1] != '\n' && c->text[from - 1] != '\r'; from--) ;
+    for (to = i; to < c->n && c->text[to] != '\n' && c->text[to] != '\r'; to++) ;
+    /* a long line: start a little before the place, on a character's first byte */
+    if (cap > 24 && i - from > cap / 3) {
+        from = i - cap / 3;
+        while (from < i && ((unsigned char)c->text[from] & 0xc0) == 0x80) from++;
+    }
+    part.text = c->text + from;
+    part.n = to - from;
+    part.id = c->id;
+    part.when = c->when;
+    ln_cliphist_title(&part, line, cap);
+    return 1;
+}

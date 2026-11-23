@@ -34,6 +34,18 @@ int ln_fileindex_add(struct ln_fileindex *x, const char *dir, const char *name, 
  * then one where a word starts with it, then the others; shorter names
  * first among equals; drawers before files among equals. Returns how many
  * were written. A query without a word of at least two bytes finds nothing. */
+/* 1 when an entry was refused because the index holds LN_FILES_MAX. */
+int ln_fileindex_full(const struct ln_fileindex *x);
+
+/* Copies into x the entries src has of folder and of the drawers below it
+ * (names compared without case). Returns how many; -1 when one could not be
+ * added. For a folder that cannot be walked this time. */
+int ln_fileindex_keep(struct ln_fileindex *x, const struct ln_fileindex *src, const char *folder);
+
+/* A number for a path, from its exact bytes: two paths that differ in any
+ * character get different numbers, short of a chance collision. */
+unsigned ln_path_hash(const char *path);
+
 int ln_fileindex_query(const struct ln_fileindex *x, const char *q, size_t qn, struct ln_file *out, int max);
 
 /* The index as text, one entry per line: "D" or "F", a tab, the drawer, a

@@ -34,4 +34,9 @@ void ln_cliphist_clear(struct ln_cliphist *h);
  * control characters as spaces, cut at a character boundary of UTF-8. */
 void ln_cliphist_title(const struct ln_clip *c, char *out, size_t cap);
 
+/* Looks for q (qn bytes, letters A-Z without case) anywhere in the entry's
+ * whole text. 1 when it is there; line then holds the line it was found in,
+ * shortened to fit, as ln_cliphist_title writes one. */
+int ln_cliphist_search(const struct ln_clip *c, const char *q, size_t qn, char *line, size_t cap);
+
 #endif

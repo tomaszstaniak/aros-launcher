@@ -109,7 +109,10 @@ letters on, in a Files section; several words narrow the search ("report
 Drawer, Copy Path and Open Shell Here. No folder is searched until you add
 one in the settings (Files tab); there you can also leave folders out, and
 names by pattern (for example #?.bak). The index is built in the background
-and kept between starts; "Rescan Programs and Files" builds it again.
+and kept between starts; "Rescan Programs and Files" builds it again. The
+row of that command says how many programs and files are known and when
+the folders were last walked. A folder that cannot be reached (its disk is
+not there) keeps the files known from the last walk.
 
 
 ARexx
@@ -147,11 +150,23 @@ Clipboard history
   clip            the texts that were on the clipboard, newest first
   clip invoice    only those with these letters
 
+The letters are looked for in the whole text, not only in its first line;
+a text found by a later line shows that line.
+
 Return puts the chosen text back on the clipboard; paste it where you
-need it. Tab offers "Delete Entry" and "Delete All Entries". The history
+need it. Tab offers "Delete Entry", "Delete All Entries" and "Pause
+History". While the history is paused nothing that is copied is kept;
+"Pause or Resume Clipboard History" switches it from anywhere. The history
 holds the last 50 texts, each up to 64 KB, from the moment the launcher
 started. It is kept in memory only: nothing is written to a disk, and it
 is gone when the launcher quits or the computer restarts.
+
+
+Pinned
+
+Select a program, a file or a drawer, press Tab and choose "Pin". Pinned
+things are listed when the panel opens with nothing typed, programs first.
+"Unpin" in the same place takes one off the list.
 
 
 Aliases and hotkeys

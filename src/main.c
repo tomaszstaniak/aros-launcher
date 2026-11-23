@@ -64,7 +64,7 @@
 #include "zk_present.h"
 #include "zk_text_aros.h"
 
-static const char version[] __attribute__((used)) = "$VER: Jumpstart 0.8.0 (18.11.2026)";
+static const char version[] __attribute__((used)) = "$VER: Jumpstart 0.9.0 (23.11.2026)";
 
 #define EVT_HOTKEY 1
 #define EVT_SHORTCUT 100      /* and the next LN_SHORTCUTS_MAX: the hotkeys of results */
@@ -130,6 +130,8 @@ static struct {
     int job;
     /* the file index: the one in use and the one being filled by a walk */
     struct ln_fileindex *files, *files_next;
+    int files_next_short;           /* part of the walk being received was lost */
+    char files_note[200];           /* what the last walk has to say, "" when nothing */
     char files_path[272];
     double files_walked;            /* when the file index was last asked for */
     char act_path[600];     /* the path the actions of a program or file work on */
@@ -142,6 +144,8 @@ static struct {
     /* what was on the clipboard, newest first; in memory only */
     struct ln_cliphist clips;
     ULONG clipsig;          /* the signal of a change, 0 when not watched */
+    int clip_paused;        /* copied texts are not kept for now */
+    int act_is_dir;         /* the file the actions work on is a drawer */
     /* ARexx: the launcher's own port, and the port answers to what it sent come to */
     struct MsgPort *rexxport, *rexxreply;
     int rexx_out;           /* commands sent and not answered yet */
@@ -211,13 +215,28 @@ static char *read_file(const char *path, size_t *n)
     return buf;
 }
 
+/* Writes beside the file and puts the new one in its place only when all of
+ * it was written; the file that was there stays as <path>.bak. 0 leaves the
+ * old file as it was. */
 static int write_file(const char *path, const char *text, size_t n)
 {
-    FILE *f = fopen(path, "wb");
+    char fresh[600], old[600];
+    FILE *f;
     int ok;
-    if (!f) return 0;
+    if (snprintf(fresh, sizeof fresh, "%s.new", path) >= (int)sizeof fresh) return 0;
+    snprintf(old, sizeof old, "%s.bak", path);
+    if (!(f = fopen(fresh, "wb"))) return 0;
     ok = fwrite(text, 1, n, f) == n;
-    return fclose(f) == 0 && ok;
+    if (fclose(f) != 0) ok = 0;
+    if (!ok) { remove(fresh); return 0; }
+    remove(old);
+    rename(path, old);              /* fails when there was no file yet */
+    if (rename(fresh, path) != 0) {
+        rename(old, path);          /* put the earlier one back */
+        remove(fresh);
+        return 0;
+    }
+    return 1;
 }
 
 /* Runs f without requesters: a missing volume is an error to handle. */
@@ -749,7 +768,7 @@ static void moment(struct ln_now *n)
 }
 
 /* The actions of a result, for Tab. The first is what Return does. */
-enum { A_DEFAULT = 1, A_SHOW_DRAWER, A_COPY_PATH, A_SHELL_HERE, A_SHOW_SCREEN, A_COPY_BOTH, A_COPY_TEXT, A_SET_ALIAS, A_SET_HOTKEY, A_CLIP_DELETE, A_CLIP_CLEAR };
+enum { A_DEFAULT = 1, A_SHOW_DRAWER, A_COPY_PATH, A_SHELL_HERE, A_SHOW_SCREEN, A_COPY_BOTH, A_COPY_TEXT, A_SET_ALIAS, A_SET_HOTKEY, A_CLIP_DELETE, A_CLIP_CLEAR, A_CLIP_PAUSE, A_PIN };
 struct action { unsigned id; const char *title, *subtitle; };
 static const struct action program_actions[] = {
     { A_DEFAULT, "Open", "Start the program" },
@@ -758,6 +777,7 @@ static const struct action program_actions[] = {
     { A_SHELL_HERE, "Open Shell Here", "A Shell in the program's drawer" },
     { A_SET_ALIAS, "Set Alias...", "A short word that finds it first" },
     { A_SET_HOTKEY, "Set Hotkey...", "Keys that start it from anywhere" },
+    { A_PIN, "Pin", "Show it when nothing is typed" },
     { 0, NULL, NULL }
 };
 static const struct action window_actions[] = {
@@ -786,12 +806,14 @@ static const struct action file_actions[] = {
     { A_SHOW_DRAWER, "Show in Drawer", "Open the drawer it is in" },
     { A_COPY_PATH, "Copy Path", "Put its full path on the clipboard" },
     { A_SHELL_HERE, "Open Shell Here", "A Shell in its drawer" },
+    { A_PIN, "Pin", "Show it when nothing is typed" },
     { 0, NULL, NULL }
 };
 static const struct action clip_actions[] = {
     { A_DEFAULT, "Copy", "Put it back on the clipboard" },
     { A_CLIP_DELETE, "Delete Entry", "Forget this text" },
     { A_CLIP_CLEAR, "Delete All Entries", "Forget everything the history holds" },
+    { A_CLIP_PAUSE, "Pause History", "Stop keeping what is copied" },
     { 0, NULL, NULL }
 };
 static const struct action package_actions[] = {
@@ -801,7 +823,7 @@ static const struct action package_actions[] = {
 };
 
 /* What the launcher itself can do, found by name like programs. */
-enum { CMD_SETTINGS = 1, CMD_RESCAN, CMD_QUIT, CMD_RESTART, CMD_SHUTDOWN, CMD_DOCKBAR, CMD_ABOUT, CMD_SHORTCUTS, CMD_CLIPBOARD };
+enum { CMD_SETTINGS = 1, CMD_RESCAN, CMD_QUIT, CMD_RESTART, CMD_SHUTDOWN, CMD_DOCKBAR, CMD_ABOUT, CMD_SHORTCUTS, CMD_CLIPBOARD, CMD_CLIP_PAUSE };
 #define CMD_KEY 0xffff0000u         /* row keys of commands; program ids are far below */
 #define WIN_KEY 0xfffe0000u         /* row keys of open windows */
 static const struct { unsigned id; const char *title, *subtitle; } commands[] = {
@@ -813,6 +835,7 @@ static const struct { unsigned id; const char *title, *subtitle; } commands[] = 
     { CMD_SHUTDOWN, "Shut Down Computer", "Asks once more before it switches off" },
     { CMD_SHORTCUTS, "Aliases and Hotkeys", "See, change or remove them" },
     { CMD_CLIPBOARD, "Clipboard History", "Texts that were on the clipboard; also: clip" },
+    { CMD_CLIP_PAUSE, "Pause or Resume Clipboard History", "Whether copied texts are kept" },
 };
 
 /* Dockbar 0.6.0 and later take widget packages through a public port. */
@@ -864,12 +887,16 @@ static int dockbar_install(char *text, size_t cap)
 static struct { unsigned key; char path[700]; char title[400]; char where[600]; int is_dir; } file_hits[FILE_ROWS];
 static int file_hit_count;
 
-static unsigned path_key(const char *path)
+/* The key of the path for row `at` of the list being built: no two rows of
+ * one list share a key, so a row always names its own file. */
+static unsigned path_key(const char *path, int at)
 {
-    unsigned h = 2166136261u;
-    while (*path) { h ^= (unsigned char)(*path++ | 32); h *= 16777619u; }
-    h |= FILE_KEY;
-    return h >= WIN_KEY ? h - 0x00030000u : h;      /* keep clear of the windows' and commands' keys */
+    unsigned h = ln_path_hash(path) | FILE_KEY;
+    int i;
+    if (h >= WIN_KEY) h -= 0x00030000u;             /* keep clear of the windows' and commands' keys */
+    for (i = 0; i < at; i++)
+        if (file_hits[i].key == h) { h = h + 1 >= WIN_KEY ? FILE_KEY : h + 1; i = -1; }
+    return h;
 }
 
 static const char *file_path(unsigned key)
@@ -996,18 +1023,22 @@ static void theme_load(void)
 /* ---- aliases and hotkeys of results ---- */
 static CxObj *hotkey_filters[LN_SHORTCUTS_MAX];
 
-static void shortcuts_save(void)
+/* 0 when the list could not be written: it then holds for this run only. */
+static int shortcuts_save(void)
 {
     size_t n;
     char *text = ln_shortcuts_text(&app.shortcuts, &n);
     APTR was = quiet();
     BPTR dir;
+    int ok = 0;
     if (text) {
         if ((dir = CreateDir((CONST_STRPTR)app.dir))) UnLock(dir);
-        write_file(app.shortcuts_path, text, n);
+        ok = write_file(app.shortcuts_path, text, n);
         free(text);
     }
     loud(was);
+    if (!ok) note("shortcuts: not saved to '%s'", app.shortcuts_path);
+    return ok;
 }
 
 /* A commodities description that the system understands and that is not
@@ -1042,6 +1073,15 @@ static void hotkeys_register(void)
     }
 }
 
+static int act_target(char *out, size_t cap);
+
+/* Whether what the actions work on is pinned. */
+static int act_pinned(void)
+{
+    char target[600];
+    return act_target(target, sizeof target) && ln_shortcuts_key_of(&app.shortcuts, LN_PIN, target) != NULL;
+}
+
 /* What the actions on show work on, as a shortcut's target. */
 static int act_target(char *out, size_t cap)
 {
@@ -1072,7 +1112,7 @@ static void prompt_save(void)
     size_t qn;
     const char *q = ze_text(p->doc, &qn);
     char key[80], said[200];
-    int has = ln_shortcut_key(q, key, sizeof key), kind = app.prompt;
+    int has = ln_shortcut_key(q, key, sizeof key), kind = app.prompt, saved;
     if (qn && !has) return;
     if (has && kind == LN_HOTKEY && !hotkey_valid(key)) {
         snprintf(p->footer, sizeof p->footer, "Not a key combination; an example: ctrl alt w");
@@ -1084,10 +1124,11 @@ static void prompt_save(void)
         show(p);
         return;
     }
-    shortcuts_save();
+    saved = shortcuts_save();
     if (kind == LN_HOTKEY) hotkeys_register();
     note("%s '%s' for '%s'", kind == LN_ALIAS ? "alias" : "hotkey", has ? key : "", app.prompt_target);
-    if (has) snprintf(said, sizeof said, "%s %.40s set for %.100s", kind == LN_ALIAS ? "Alias" : "Hotkey", key, app.prompt_title);
+    if (!saved) snprintf(said, sizeof said, "Could not be saved: the %s holds until Jumpstart quits", has ? "change" : "removal");
+    else if (has) snprintf(said, sizeof said, "%s %.40s set for %.100s", kind == LN_ALIAS ? "Alias" : "Hotkey", key, app.prompt_title);
     else snprintf(said, sizeof said, "%s removed from %.100s", kind == LN_ALIAS ? "Alias" : "Hotkey", app.prompt_title);
     app.prompt = 0;
     if (app.listing) { ze_set_text(p->doc, "", 0); query_changed(); }
@@ -1153,13 +1194,35 @@ static void hotkey_fired(int i)
  * programs and the launcher's own commands, best match first. Commands
  * and programs are ranked together, so that "quit" finds Quit Jumpstart
  * before a program that merely has those letters. */
+/* What the indexes hold and when the files were last walked, for the row of
+ * the rescan command. */
+static const char *index_status(void)
+{
+    static char said[260];
+    int programs = ln_index_count(app.index), files = app.files ? ln_fileindex_count(app.files) : 0;
+    if (!app.cfg.files_n) {
+        snprintf(said, sizeof said, "%d programs; no folders are chosen for files (Settings, Files)", programs);
+    } else if (app.files_note[0]) {
+        snprintf(said, sizeof said, "%d programs, %d files. %s", programs, files, app.files_note);
+    } else if (app.files_next) {
+        snprintf(said, sizeof said, "%d programs, %d files; the folders are being walked now", programs, files);
+    } else {
+        time_t t = (time_t)app.files_walked;
+        struct tm *tm = localtime(&t);
+        snprintf(said, sizeof said, "%d programs, %d files in %d folders, walked at %02d:%02d; Return walks again",
+                 programs, files, app.cfg.files_n, tm ? tm->tm_hour : 0, tm ? tm->tm_min : 0);
+    }
+    return said;
+}
+
 static void answer(void)
 {
     struct panel *p = &app.p;
     const struct ln_entry *e[QUERY_ROWS];
     static struct ln_match m[QUERY_ROWS];
     static struct ln_row row[QUERY_ROWS + WIN_MAX + 8];
-    char *sub[QUERY_ROWS], *alias_sub = NULL;
+    char *sub[QUERY_ROWS], *alias_sub = NULL, *pin_sub[LN_SHORTCUTS_MAX];
+    int pin_subs = 0;
     size_t qn, c;
     const char *q = ze_text(p->doc, &qn);
     unsigned cur = ln_results_current(p->res);
@@ -1197,6 +1260,7 @@ static void answer(void)
         /* the list of all of them, narrowed by what is typed */
         for (i = 0; i < app.shortcuts.n && total < QUERY_ROWS; i++) {
             const struct ln_shortcut *e1 = &app.shortcuts.v[i];
+            if (e1->kind == LN_PIN) continue;
             snprintf(titles[i], sizeof titles[i], "%.40s   %.90s", e1->key, e1->title[0] ? e1->title : e1->target);
             if (!ln_match(q, qn, titles[i], strlen(titles[i]), &row[total].m)) continue;
             row[total].key = 0x2000u | (unsigned)i;
@@ -1223,6 +1287,8 @@ static void answer(void)
             row[total].key = a[i].id;
             row[total].title = a[i].title;
             row[total].subtitle = a[i].subtitle;
+            if (a[i].id == A_CLIP_PAUSE && app.clip_paused) { row[total].title = "Resume History"; row[total].subtitle = "Keep what is copied again"; }
+            if (a[i].id == A_PIN && act_pinned()) { row[total].title = "Unpin"; row[total].subtitle = "No longer shown when nothing is typed"; }
             row[total].score = 100 - i + (qn ? row[total].m.score : 0);
             total++;
         }
@@ -1236,7 +1302,7 @@ static void answer(void)
         const char *rest = NULL;
         if (qn >= 4 && !strncmp(q, "clip", 4) && (qn == 4 || q[4] == ' ')) rest = q + (qn == 4 ? 4 : 5);
         if (rest) {
-            static char titles[LN_CLIP_MAX][120], subs[LN_CLIP_MAX][40];
+            static char titles[LN_CLIP_MAX][120], subs[LN_CLIP_MAX][120];
             size_t rn = strlen(rest);
             ln_results_answer(p->res, cur, LN_SRC_SHELL, row, 0);
             ln_results_answer(p->res, cur, LN_SRC_CALC, row, 0);
@@ -1247,12 +1313,18 @@ static void answer(void)
             for (i = 0; i < app.clips.n && total < QUERY_ROWS; i++) {
                 const struct ln_clip *cl = &app.clips.v[i];
                 ln_cliphist_title(cl, titles[i], sizeof titles[i]);
-                if (!ln_match(rest, rn, titles[i], strlen(titles[i]), &row[total].m)) continue;
                 snprintf(subs[i], sizeof subs[i], cl->n == 1 ? "%lu character" : "%lu characters", (unsigned long)cl->n);
+                if (!ln_match(rest, rn, titles[i], strlen(titles[i]), &row[total].m)) {
+                    /* not in the first line: anywhere in the text, and the line it is in */
+                    char line[100];
+                    memset(&row[total].m, 0, sizeof row[total].m);
+                    if (!ln_cliphist_search(cl, rest, rn, line, sizeof line)) continue;
+                    snprintf(subs[i], sizeof subs[i], "%.110s", line);
+                }
                 row[total].key = cl->id;
                 row[total].title = titles[i];
                 row[total].subtitle = subs[i];
-                row[total].kind = i ? "" : "Newest";
+                row[total].kind = app.clip_paused ? "Paused" : i ? "" : "Newest";
                 row[total].score = (rn ? row[total].m.score : 0) + LN_CLIP_MAX - i;
                 total++;
             }
@@ -1370,12 +1442,32 @@ static void answer(void)
         row[i].score = qn ? m[i].score + (int)uses * 3 : QUERY_ROWS - i;
     }
     total = n;
+    /* nothing typed: what was pinned comes first */
+    if (!qn) {
+        int pi, order = 0;
+        for (pi = 0; pi < app.shortcuts.n; pi++) {
+            const struct ln_shortcut *pin = &app.shortcuts.v[pi];
+            const struct ln_entry *pe;
+            if (pin->kind != LN_PIN || strcmp(pin->key, "program") || !(pe = ln_index_find_path(app.index, pin->target))) continue;
+            for (i = 0; i < total && row[i].key != pe->id; i++) ;
+            if (i == total) {
+                if (total >= QUERY_ROWS) continue;
+                memset(&row[i], 0, sizeof row[i]);
+                row[i].key = pe->id; row[i].title = pe->title; row[i].subtitle = pin_sub[pin_subs++] = drawer_of(pe->path);
+                total++;
+            }
+            row[i].kind = "Pinned";
+            row[i].score = 1000 - order++;
+        }
+    }
     for (c = 0; qn && c < sizeof commands / sizeof commands[0]; c++)
         if ((commands[c].id != CMD_DOCKBAR || (app.widget_root[0] && dockbar_there()))
             && ln_match(q, qn, commands[c].title, strlen(commands[c].title), &row[total].m)) {
             row[total].key = CMD_KEY | commands[c].id;
             row[total].title = commands[c].title;
-            row[total].subtitle = commands[c].subtitle;
+            row[total].subtitle = commands[c].id == CMD_RESCAN ? index_status()
+                                : commands[c].id == CMD_CLIP_PAUSE ? (app.clip_paused ? "Paused now; Return keeps copied texts again" : "Kept now; Return pauses")
+                                : commands[c].subtitle;
             row[total].kind = "Command";
             row[total].score = row[total].m.score;
             total++;
@@ -1438,6 +1530,7 @@ static void answer(void)
     ln_results_answer(p->res, cur, LN_SRC_PROGRAMS, row, total);
     for (i = 0; i < n; i++) zt_free(sub[i]);
     if (alias_sub) zt_free(alias_sub);
+    while (pin_subs) { pin_subs--; if (pin_sub[pin_subs]) zt_free(pin_sub[pin_subs]); }
 
     /* packages that are not installed, by their name; installed ones are
        found as programs */
@@ -1480,12 +1573,35 @@ static void answer(void)
             copy_shown(file_hits[i].title, sizeof file_hits[i].title, f[i].name);
             copy_shown(file_hits[i].where, sizeof file_hits[i].where, f[i].dir);
             file_hits[i].is_dir = f[i].is_dir;
-            file_hits[i].key = path_key(file_hits[i].path);
+            file_hits[i].key = path_key(file_hits[i].path, i);
             row[i].key = file_hits[i].key;
             row[i].title = file_hits[i].title;
             row[i].subtitle = file_hits[i].where;
             row[i].kind = f[i].is_dir ? "Drawer" : "File";
             row[i].score = FILE_ROWS - i;
+        }
+        file_hit_count = k;
+    } else if (!qn) {
+        /* nothing typed: the pinned files and drawers */
+        int pi, k = 0;
+        for (pi = 0; pi < app.shortcuts.n && k < FILE_ROWS; pi++) {
+            const struct ln_shortcut *pin = &app.shortcuts.v[pi];
+            const char *cut, *t;
+            char dir[600];
+            if (pin->kind != LN_PIN || !strcmp(pin->key, "program")) continue;
+            for (cut = NULL, t = pin->target; *t; t++) if (*t == '/' || *t == ':') cut = t;
+            snprintf(dir, sizeof dir, "%.*s", cut ? (int)(cut - pin->target + (*cut == ':')) : 0, pin->target);
+            snprintf(file_hits[k].path, sizeof file_hits[k].path, "%s", pin->target);
+            snprintf(file_hits[k].title, sizeof file_hits[k].title, "%s", pin->title[0] ? pin->title : pin->target);
+            copy_shown(file_hits[k].where, sizeof file_hits[k].where, dir);
+            file_hits[k].is_dir = !strcmp(pin->key, "drawer");
+            file_hits[k].key = path_key(file_hits[k].path, k);
+            row[k].key = file_hits[k].key;
+            row[k].title = file_hits[k].title;
+            row[k].subtitle = file_hits[k].where;
+            row[k].kind = "Pinned";
+            row[k].score = FILE_ROWS - k;
+            k++;
         }
         file_hit_count = k;
     }
@@ -1752,7 +1868,12 @@ static void actions_enter(void)
     app.act_key = row->key;
     snprintf(app.act_title, sizeof app.act_title, "%s", row->title);
     app.act_path[0] = 0;
-    if (row->source == LN_SRC_FILES && file_path(row->key)) snprintf(app.act_path, sizeof app.act_path, "%s", file_path(row->key));
+    app.act_is_dir = 0;
+    if (row->source == LN_SRC_FILES && file_path(row->key)) {
+        int fi;
+        snprintf(app.act_path, sizeof app.act_path, "%s", file_path(row->key));
+        for (fi = 0; fi < file_hit_count; fi++) if (file_hits[fi].key == row->key) app.act_is_dir = file_hits[fi].is_dir;
+    }
     else if (row->source == LN_SRC_PROGRAMS && row->key < WIN_KEY) {
         const struct ln_entry *e = ln_index_find(app.index, row->key);
         if (e) snprintf(app.act_path, sizeof app.act_path, "%s", e->path);
@@ -1864,6 +1985,30 @@ static void run_selected(void)
         if (id == A_SET_ALIAS || id == A_SET_HOTKEY) {
             char target[600];
             if (act_target(target, sizeof target)) prompt_begin(id == A_SET_ALIAS ? LN_ALIAS : LN_HOTKEY, target, app.act_title);
+            return;
+        }
+        if (id == A_CLIP_PAUSE) {
+            app.clip_paused = !app.clip_paused;
+            note("clipboard history %s", app.clip_paused ? "paused" : "resumed");
+            actions_leave();
+            snprintf(p->footer, sizeof p->footer, app.clip_paused ? "Clipboard history paused" : "Clipboard history keeps texts again");
+            show(p);
+            return;
+        }
+        if (id == A_PIN) {
+            char target[600];
+            if (act_target(target, sizeof target)) {
+                int was = ln_shortcuts_key_of(&app.shortcuts, LN_PIN, target) != NULL, ok, saved;
+                const char *what = app.act_source == LN_SRC_FILES ? (app.act_is_dir ? "drawer" : "file") : "program";
+                ok = ln_shortcuts_set(&app.shortcuts, LN_PIN, was ? "" : what, target, app.act_title);
+                saved = ok && shortcuts_save();
+                note("pin %s '%s' ok=%d", was ? "removed" : "set", target, ok);
+                actions_leave();
+                if (!ok) snprintf(p->footer, sizeof p->footer, "No room for another one");
+                else if (!saved) snprintf(p->footer, sizeof p->footer, "Could not be saved: the change holds until Jumpstart quits");
+                else snprintf(p->footer, sizeof p->footer, "%.120s %s", app.act_title, was ? "unpinned" : "pinned");
+                show(p);
+            }
             return;
         }
         if (id == A_CLIP_DELETE || id == A_CLIP_CLEAR) {
@@ -2012,6 +2157,15 @@ static void run_selected(void)
             ok = dockbar_install(said, sizeof said);
             note("dockbar install ok=%d: %s", ok, said);
             if (!ok) open_panel(said);
+            return;
+        }
+        if (id == CMD_CLIP_PAUSE) {
+            app.clip_paused = !app.clip_paused;
+            note("clipboard history %s", app.clip_paused ? "paused" : "resumed");
+            ze_set_text(p->doc, "", 0);
+            query_changed();
+            snprintf(p->footer, sizeof p->footer, app.clip_paused ? "Clipboard history paused" : "Clipboard history keeps texts again");
+            show(p);
             return;
         }
         if (id == CMD_CLIPBOARD) {
@@ -2175,6 +2329,17 @@ static void scan_events(void)
         case LN_SCAN_FILES_BEGIN:
             if (app.files_next) ln_fileindex_free(app.files_next);
             app.files_next = ln_fileindex_new();
+            app.files_note[0] = 0;
+            app.files_next_short = app.files_next == NULL;
+            break;
+        case LN_SCAN_FILES_KEEP:
+            /* a folder that could not be reached: what was known of it stays */
+            if (app.files_next && m->path) {
+                int kept = ln_fileindex_keep(app.files_next, app.files, m->path);
+                if (kept < 0 && !ln_fileindex_full(app.files_next)) app.files_next_short = 1;
+                snprintf(app.files_note, sizeof app.files_note, "%.120s could not be read; its files are from the last walk", m->path);
+                note("files: '%s' not reachable, %d entries kept", m->path, kept);
+            }
             break;
         case LN_SCAN_FILES:
             if (app.files_next && m->path && m->title) {
@@ -2182,14 +2347,21 @@ static void scan_events(void)
                 while (*line) {
                     char *end = strchr(line, '\n');
                     if (end) *end = 0;
-                    if (line[0] && line[1]) ln_fileindex_add(app.files_next, m->path, line + 1, line[0] == 'D');
+                    if (line[0] && line[1] && !ln_fileindex_add(app.files_next, m->path, line + 1, line[0] == 'D')
+                        && !ln_fileindex_full(app.files_next)) app.files_next_short = 1;        /* no memory */
                     if (!end) break;
                     line = end + 1;
                 }
             }
             break;
         case LN_SCAN_FILES_END:
-            if (app.files_next) {
+            if (app.files_next && app.files_next_short) {
+                /* part of the walk was lost here: the index in use stays */
+                ln_fileindex_free(app.files_next);
+                app.files_next = NULL;
+                snprintf(app.files_note, sizeof app.files_note, "The last walk ran out of memory; the earlier index is in use");
+                note("files: walk incomplete, index kept");
+            } else if (app.files_next) {
                 size_t n;
                 char *text;
                 APTR was = quiet();
@@ -2201,10 +2373,11 @@ static void scan_events(void)
                 /* kept for the next start, so that files are found at once */
                 if ((text = ln_fileindex_save(app.files, &n))) {
                     if ((dir = CreateDir((CONST_STRPTR)app.dir))) UnLock(dir);
-                    write_file(app.files_path, text, n);
+                    if (!write_file(app.files_path, text, n)) note("files: index not saved to '%s'", app.files_path);
                     free(text);
                 }
                 loud(was);
+                if (ln_fileindex_full(app.files)) snprintf(app.files_note, sizeof app.files_note, "The index is full at %d entries; some files are left out", LN_FILES_MAX);
                 app.index_changed = 1;
                 note("files indexed: %d", ln_fileindex_count(app.files));
                 app.files_walked = (double)time(NULL);
@@ -2245,10 +2418,47 @@ static void scan_events(void)
 /* --- settings ------------------------------------------------------------ */
 
 /* The lists of the settings as one text, to tell whether they changed. */
+/* The folders searched and what is left out, as one text: what the scanner
+ * was started with. Look and other settings are not part of it. */
 static char *lists_text(void)
 {
-    size_t n;
-    return ln_config_text(&app.cfg, &n);
+    size_t cap = 16, len = 0;
+    char *out;
+    int i;
+    for (i = 0; i < app.cfg.folders; i++) cap += strlen(app.cfg.folder[i]) + 3;
+    for (i = 0; i < app.cfg.files_n; i++) cap += strlen(app.cfg.files[i]) + 3;
+    for (i = 0; i < app.cfg.exclude_n; i++) cap += strlen(app.cfg.exclude[i]) + 3;
+    if (!(out = malloc(cap))) return NULL;
+    for (i = 0; i < app.cfg.folders; i++) len += (size_t)sprintf(out + len, "p\t%s\n", app.cfg.folder[i]);
+    for (i = 0; i < app.cfg.files_n; i++) len += (size_t)sprintf(out + len, "f\t%s\n", app.cfg.files[i]);
+    for (i = 0; i < app.cfg.exclude_n; i++) len += (size_t)sprintf(out + len, "x\t%s\n", app.cfg.exclude[i]);
+    out[len] = 0;
+    return out;
+}
+
+/* The scanner that ran a provider is gone and its answer with it: the job
+ * is over, its request files go, and the question can be asked again. */
+static void job_cancel(void)
+{
+    char done[200];
+    APTR was;
+    if (app.job == JOB_NONE) return;
+    was = quiet();
+    if (app.job == JOB_RATES) {
+        snprintf(done, sizeof done, "%s.done", app.rates_request);
+        remove(app.rates_request); remove(done);
+        app.rates_asked = 0;
+    } else {
+        snprintf(done, sizeof done, "%s.done", app.wx_request);
+        remove(app.wx_request); remove(done);
+        if (app.wx.state == WX_BUSY) {
+            app.wx.state = WX_FAILED;
+            snprintf(app.wx.error, sizeof app.wx.error, "Interrupted by a settings change; press Return again");
+        }
+    }
+    loud(was);
+    note("job %d cancelled", app.job);
+    app.job = JOB_NONE;
 }
 
 static void open_settings(void)
@@ -2282,6 +2492,8 @@ static void open_settings(void)
             /* other folders or excludes: a new scanner; programs of folders
                no longer searched leave the index, the file index is walked anew */
             if (app.scan) ln_scan_stop(app.scan);
+            job_cancel();
+            if (app.files_next) { ln_fileindex_free(app.files_next); app.files_next = NULL; }
             for (i = 0; i < old_n; i++)
                 if (old_folder[i]) { ln_index_begin(app.index, old_folder[i]); ln_index_end(app.index, old_folder[i]); }
             if (!app.cfg.files_n && app.files) { ln_fileindex_free(app.files); app.files = NULL; }
@@ -2458,7 +2670,7 @@ int main(int argc, char **argv)
         if (app.clipsig && (got & app.clipsig)) {
             /* the clipboard changed: its text joins the history */
             size_t n;
-            char *text = ln_clip_read(&n);
+            char *text = app.clip_paused ? NULL : ln_clip_read(&n);
             if (text) {
                 if (ln_cliphist_add(&app.clips, text, n, now()) && app.p.win) { answer(); show(&app.p); }
                 free(text);
@@ -2480,8 +2692,30 @@ out:
         while ((m = GetMsg(app.cxport))) ReplyMsg(m);
         DeleteMsgPort(app.cxport);
     }
+    /* The public port goes first, so that nobody finds it any more; what was
+       already sent to it is answered. */
+    if (app.rexxport) {
+        struct RexxMsg *m;
+        Forbid();
+        RemPort(app.rexxport);
+        Permit();
+        while ((m = (struct RexxMsg *)GetMsg(app.rexxport))) { m->rm_Result1 = RC_FATAL; m->rm_Result2 = 0; ReplyMsg(&m->rm_Node); }
+        DeleteMsgPort(app.rexxport);
+        app.rexxport = NULL;
+    }
+    /* Answers to commands this program sent come to rexxreply: wait a
+       little for those still out. A port somebody may still answer to is
+       left allocated, which is small and safe; freeing it would not be. */
+    if (app.rexxreply) {
+        int tries;
+        for (tries = 0; app.rexx_out > 0 && tries < 60; tries++) { rexx_replies(); if (app.rexx_out > 0) Delay(5); }
+        if (app.rexx_out <= 0) DeleteMsgPort(app.rexxreply);
+        else note("rexx: %d answers still out, reply port kept", app.rexx_out);
+        app.rexxreply = NULL;
+    }
     if (RexxSysBase) CloseLibrary((struct Library *)RexxSysBase);
     if (app.scan) ln_scan_stop(app.scan);
+    job_cancel();
     if (app.scanport) {
         struct ln_scan_msg *m;
         while ((m = (struct ln_scan_msg *)GetMsg(app.scanport))) ln_scan_free_msg(m);
