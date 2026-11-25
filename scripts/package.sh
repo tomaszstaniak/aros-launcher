@@ -35,10 +35,12 @@ cp "$R"/themes/*.theme "$R/themes/THEME-LICENSES.txt" "$work/Jumpstart/Themes/"
 cp "$R/packaging/Jumpstart.info" "$work/Jumpstart/Jumpstart.info"
 cp "$R/packaging/drawer.info" "$work/Jumpstart.info"
 sed -e "s/@VERSION@/$version/" -e "s/@TARGET@/$arch/" -e "s|@REQUIRES@|$requires|" "$R/packaging/ReadMe.txt" > "$work/Jumpstart/ReadMe.txt"
+# /home/runner: the same for the SDKs of nightly builds made on GitHub
+# runners (seen in libcurl and libcrypto of nightly 2026-11-24).
 # Nothing in the package names the machine it was built on. /home/vsts is
 # the AROS project's own build service, whose paths are inside the contrib
 # curl and OpenSSL of the official Pi SDK.
-found=$(LC_ALL=C grep -r -a -o -h -E "(/Users/|/Volumes/|/private/|/home/)[A-Za-z0-9_.-]*" "$work" | grep -v -x "/home/vsts" | sort -u || true)
+found=$(LC_ALL=C grep -r -a -o -h -E "(/Users/|/Volumes/|/private/|/home/)[A-Za-z0-9_.-]*" "$work" | grep -v -x -e "/home/vsts" -e "/home/runner" | sort -u || true)
 if [ -n "$found" ]; then
   echo "host paths in the package:" $found >&2; exit 1
 fi
