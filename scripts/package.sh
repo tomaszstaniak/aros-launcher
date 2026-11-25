@@ -14,7 +14,7 @@ version=$(sed -n 's/.*\$VER: Jumpstart \([0-9.]*\) .*/\1/p' "$R/src/main.c")
 case "$ln_target" in
   x86_64-v1) arch=aros-x86_64-abiv1-pc; requires="AROS x86_64 ABIv1 (mainline), a nightly from 2026-11-24 or later." ;;
   x86_64-abiv11) arch=aros-x86_64-abiv11-pc; requires="AROS x86_64 ABIv11 (an ABIv11 distribution)." ;;
-  aarch64-raspi-v1) arch=aros-aarch64-abiv1-raspi; requires="AROS Raspberry Pi AArch64 ABIv1 (mainline)." ;;
+  aarch64-raspi-v1) arch=aros-aarch64-abiv1-raspi; requires="AROS Raspberry Pi AArch64 ABIv1 (mainline), a nightly from 2026-11-24 or later." ;;
 esac
 bin=$ln_build/Launcher
 [ -x "$bin" ] || { echo "Run scripts/build.sh first" >&2; exit 1; }
