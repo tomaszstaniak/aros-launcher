@@ -17,7 +17,7 @@
 <div class="wrap hero-copy">
 <h1>Jumpstart, a keyboard<br>launcher for AROS</h1>
 <p class="intro">Press <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Space</kbd>, type a few letters and press <kbd>Return</kbd> to open a program. If you already have a document open, type its window title to switch back to it.</p>
-<p class="fine">For ABIv11 distributions, mainline AROS on PC and the Raspberry Pi. Version 0.9.0, open source (MIT).</p>
+<p class="fine">For ABIv11 distributions, mainline AROS on PC and the Raspberry Pi. Version 0.10.0, open source (MIT).</p>
 </div>
 
 <div class="wrap demo" id="demo">
@@ -87,7 +87,7 @@
 <article>
 <figure class="shot"><img src="assets/clip.png" width="784" height="358" loading="lazy" alt="Clipboard history with three entries, the newest marked"><figcaption>Three copied answers, newest first.</figcaption></figure>
 <h3>Clipboard history</h3>
-<p>Type <code>clip</code> to see your last 50 clipboard entries. Keep typing to find a particular piece of text; the search covers the whole text of each entry. <kbd>Return</kbd> puts one back on the clipboard, <kbd>Tab</kbd> deletes an entry or all of them, or pauses the history. Jumpstart keeps the history in memory and clears it when you quit.</p>
+<p>Type <code>clip</code> to see your last 50 clipboard entries, texts and pictures. A picture is shown with a small copy of itself, and <kbd>Return</kbd> puts the same picture back for pasting. Keep typing to find a particular piece of text; the search covers the whole text of each entry. <kbd>Return</kbd> puts one back on the clipboard, <kbd>Tab</kbd> deletes an entry or all of them, or pauses the history. Jumpstart keeps the history in memory and clears it when you quit.</p>
 </article>
 <article>
 <figure class="shot bare"><img src="assets/packages.png" width="608" height="162" loading="lazy" alt="The panel listing the package eza with its description and version, with Return Install in the footer"><figcaption>A package that is not installed yet. Earlier build, mainline AROS x86_64.</figcaption></figure>
@@ -157,17 +157,17 @@
 </div></section>
 
 <section id="get" class="section wrap get">
-<div class="section-heading"><h2>Downloads</h2><p class="section-lead">Version 0.9.0 is the current release. With <a href="https://github.com/tomaszstaniak/arospkg">apkg</a>, one command installs it:</p></div>
+<div class="section-heading"><h2>Downloads</h2><p class="section-lead">Version 0.10.0 is the current release for ABIv11 distributions; mainline AROS and the Raspberry Pi have 0.9.0. With <a href="https://github.com/tomaszstaniak/arospkg">apkg</a>, one command installs it:</p></div>
 <pre class="install"><code>apkg install jumpstart</code></pre>
 <div class="downloads">
-<a class="dl" href="https://github.com/tomaszstaniak/aros-launcher/releases/download/v0.9.0/Jumpstart-0.9.0-aros-x86_64-abiv11-pc.zip"><strong>ABIv11 distributions</strong><span>x86_64, PC</span></a>
-<a class="dl" href="https://github.com/tomaszstaniak/aros-launcher/releases/download/v0.9.0/Jumpstart-0.9.0-aros-x86_64-abiv1-pc.zip"><strong>Mainline AROS</strong><span>x86_64, ABIv1, a nightly from 2026-11-06 or later</span></a>
-<a class="dl" href="https://github.com/tomaszstaniak/aros-launcher/releases/download/v0.9.0/Jumpstart-0.9.0-aros-aarch64-abiv1-raspi.zip"><strong>Raspberry Pi</strong><span>AArch64, ABIv1, tested under QEMU only</span></a>
+<a class="dl" href="https://github.com/tomaszstaniak/aros-launcher/releases/download/v0.10.0/Jumpstart-0.10.0-aros-x86_64-abiv11-pc.zip"><strong>ABIv11 distributions</strong><span>x86_64, PC, version 0.10.0</span></a>
+<a class="dl" href="https://github.com/tomaszstaniak/aros-launcher/releases/download/v0.9.0/Jumpstart-0.9.0-aros-x86_64-abiv1-pc.zip"><strong>Mainline AROS</strong><span>x86_64, ABIv1, version 0.9.0, for nightlies from 2026-11-06 to 2026-11-23</span></a>
+<a class="dl" href="https://github.com/tomaszstaniak/aros-launcher/releases/download/v0.9.0/Jumpstart-0.9.0-aros-aarch64-abiv1-raspi.zip"><strong>Raspberry Pi</strong><span>AArch64, ABIv1, version 0.9.0, for nightlies before 2026-11-24, tested under QEMU only</span></a>
 </div>
 <div class="cols">
 <article><h3>Starting it</h3><p>Unpack the archive anywhere and double-click Jumpstart. It runs in the background. Open it with <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Space</kbd>. The first start from its icon also sets it up to start with the system, which you can switch off in its settings. The hotkey is the <code>CX_POPKEY</code> ToolType of the icon.</p></article>
 <article><h3>What it needs</h3><p>TrueType fonts in <code>FONTS:TrueType</code> (DejaVu Sans, as installed with the system). Currency and weather need the network. Packages need apkg. Choose the archive for your architecture and ABI.</p></article>
-<article><h3>Notes and source</h3><p>The <a href="https://github.com/tomaszstaniak/aros-launcher/releases/tag/v0.9.0">release notes</a> list the files and their checksums. The source is on <a href="https://github.com/tomaszstaniak/aros-launcher">GitHub</a>, where you can also <a href="https://github.com/tomaszstaniak/aros-launcher/issues">report a problem</a>.</p></article>
+<article><h3>Notes and source</h3><p>The <a href="https://github.com/tomaszstaniak/aros-launcher/releases/tag/v0.10.0">release notes</a> list the files and their checksums. The source is on <a href="https://github.com/tomaszstaniak/aros-launcher">GitHub</a>, where you can also <a href="https://github.com/tomaszstaniak/aros-launcher/issues">report a problem</a>.</p></article>
 </div>
 </section>
 
