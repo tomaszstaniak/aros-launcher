@@ -110,8 +110,8 @@ Drawer, Copy Path and Open Shell Here. No folder is searched until you add
 one in the settings (Files tab); there you can also leave folders out, and
 names by pattern (for example #?.bak). The index is built in the background
 and kept between starts; "Rescan Programs and Files" builds it again. The
-row of that command says how many programs and files are known and when
-the folders were last walked. A folder that cannot be reached (its disk is
+row of that command says how many programs and files are known, how long
+the last refresh took and when it was. A folder that cannot be reached (its disk is
 not there) keeps the files known from the last walk.
 
 
@@ -147,8 +147,13 @@ other is made from it, with the same hues.
 
 Clipboard history
 
-  clip            the texts that were on the clipboard, newest first
+  clip            what was on the clipboard, texts and pictures, newest first
   clip invoice    only those with these letters
+
+A picture (an IFF ILBM, as paint and screenshot programs put it on the
+clipboard) is listed with a small copy of itself and its size in pixels;
+"clip picture" lists the pictures. Return puts exactly the same picture
+back, for pasting into another program.
 
 The letters are looked for in the whole text, not only in its first line;
 a text found by a later line shows that line.
@@ -157,8 +162,9 @@ Return puts the chosen text back on the clipboard; paste it where you
 need it. Tab offers "Delete Entry", "Delete All Entries" and "Pause
 History". While the history is paused nothing that is copied is kept;
 "Pause or Resume Clipboard History" switches it from anywhere. The history
-holds the last 50 texts, each up to 64 KB, from the moment the launcher
-started. It is kept in memory only: nothing is written to a disk, and it
+holds the last 50 entries from the moment the launcher started: texts up
+to 64 KB each, pictures up to 32 MB each, 64 MB altogether. When that is
+full the oldest entries go. It is kept in memory only: nothing is written to a disk, and it
 is gone when the launcher quits or the computer restarts.
 
 

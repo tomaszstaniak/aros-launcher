@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <devices/clipboard.h>
 #include <devices/inputevent.h>
 #include <devices/rawkeycodes.h>
 #include <libraries/iffparse.h>
@@ -154,4 +155,74 @@ char *ln_clip_read(size_t *n)
     }
     free(utf); free(chrs);
     return out;
+}
+
+/* --- the clipboard's bytes as they are ----------------------------------- */
+
+static struct IOClipReq *clip_open(struct MsgPort **port)
+{
+    struct IOClipReq *req;
+    if (!(*port = CreateMsgPort())) return NULL;
+    if ((req = (struct IOClipReq *)CreateIORequest(*port, sizeof *req))) {
+        if (!OpenDevice((CONST_STRPTR)"clipboard.device", 0, (struct IORequest *)req, 0)) return req;
+        DeleteIORequest((struct IORequest *)req);
+    }
+    DeleteMsgPort(*port);
+    return NULL;
+}
+
+static void clip_close(struct IOClipReq *req, struct MsgPort *port)
+{
+    CloseDevice((struct IORequest *)req);
+    DeleteIORequest((struct IORequest *)req);
+    DeleteMsgPort(port);
+}
+
+static ULONG clip_read(struct IOClipReq *req, APTR to, ULONG len)
+{
+    req->io_Command = CMD_READ;
+    req->io_Data = (STRPTR)to;
+    req->io_Length = len;
+    return DoIO((struct IORequest *)req) ? 0 : req->io_Actual;
+}
+
+unsigned char *ln_clip_read_form(const char *type, size_t max, size_t *n)
+{
+    struct MsgPort *port;
+    struct IOClipReq *req = clip_open(&port);
+    unsigned char head[12], rest[256], *out = NULL;
+    *n = 0;
+    if (!req) return NULL;
+    req->io_Offset = 0;
+    req->io_ClipID = 0;
+    if (clip_read(req, head, 12) == 12 && !memcmp(head, "FORM", 4) && !memcmp(head + 8, type, 4)) {
+        size_t total = 8 + (((size_t)head[4] << 24) | ((size_t)head[5] << 16) | ((size_t)head[6] << 8) | head[7]);
+        if (total > 12 && total <= max && (out = malloc(total))) {
+            memcpy(out, head, 12);
+            if (clip_read(req, out + 12, (ULONG)(total - 12)) == total - 12) *n = total;
+            else { free(out); out = NULL; }
+        }
+    }
+    /* a read is over for the device when one comes back empty */
+    while (clip_read(req, rest, sizeof rest)) ;
+    clip_close(req, port);
+    return out;
+}
+
+int ln_clip_write_form(const unsigned char *data, size_t n)
+{
+    struct MsgPort *port;
+    struct IOClipReq *req = clip_open(&port);
+    int ok;
+    if (!req) return 0;
+    req->io_Offset = 0;
+    req->io_ClipID = 0;
+    req->io_Command = CMD_WRITE;
+    req->io_Data = (STRPTR)data;
+    req->io_Length = (ULONG)n;
+    ok = !DoIO((struct IORequest *)req) && req->io_Actual == (ULONG)n;
+    req->io_Command = CMD_UPDATE;
+    if (DoIO((struct IORequest *)req)) ok = 0;
+    clip_close(req, port);
+    return ok;
 }

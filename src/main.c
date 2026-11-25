@@ -42,6 +42,7 @@
 #include "config.h"
 #include "shortcuts.h"
 #include "cliphist.h"
+#include "ilbm.h"
 #include "theme.h"
 #include "clipwatch_aros.h"
 #include "dockbar/widgets.h"
@@ -64,7 +65,7 @@
 #include "zk_present.h"
 #include "zk_text_aros.h"
 
-static const char version[] __attribute__((used)) = "$VER: Jumpstart 0.9.0 (23.11.2026)";
+static const char version[] __attribute__((used)) = "$VER: Jumpstart 0.10.0 (25.11.2026)";
 
 #define EVT_HOTKEY 1
 #define EVT_SHORTCUT 100      /* and the next LN_SHORTCUTS_MAX: the hotkeys of results */
@@ -131,6 +132,7 @@ static struct {
     /* the file index: the one in use and the one being filled by a walk */
     struct ln_fileindex *files, *files_next;
     int files_next_short;           /* part of the walk being received was lost */
+    unsigned long files_walk_ms, files_save_ms;     /* the last refresh: the walk, and taking it over and saving it */
     char files_note[200];           /* what the last walk has to say, "" when nothing */
     char files_path[272];
     double files_walked;            /* when the file index was last asked for */
@@ -526,6 +528,29 @@ static int rexx_replies(void)
         any = 1;
     }
     return any;
+}
+
+/* What is on the clipboard joins the history: its text, or else a picture.
+ * 1 when the history changed. */
+static int clip_take(void)
+{
+    size_t n;
+    char *text = ln_clip_read(&n);
+    int changed = 0;
+    if (text) {
+        changed = ln_cliphist_add(&app.clips, text, n, now());
+        free(text);
+    } else {
+        unsigned char *form = ln_clip_read_form("ILBM", LN_CLIP_PICTURE_MAX, &n);
+        struct ln_ilbm im;
+        if (form && ln_ilbm_parse(form, n, &im)) {
+            changed = ln_cliphist_add_picture(&app.clips, form, n, im.w, im.h, im.depth, now());
+            note("clipboard picture %dx%d depth %d, %lu bytes, kept=%d, history %d entries %lu bytes",
+                 im.w, im.h, im.depth, (unsigned long)n, changed, app.clips.n, (unsigned long)app.clips.bytes);
+        }
+        free(form);
+    }
+    return changed;
 }
 
 static int open_panel(const char *footer);
@@ -1209,8 +1234,13 @@ static const char *index_status(void)
     } else {
         time_t t = (time_t)app.files_walked;
         struct tm *tm = localtime(&t);
-        snprintf(said, sizeof said, "%d programs, %d files in %d folders, walked at %02d:%02d; Return walks again",
-                 programs, files, app.cfg.files_n, tm ? tm->tm_hour : 0, tm ? tm->tm_min : 0);
+        unsigned long ms = app.files_walk_ms + app.files_save_ms;
+        if (ms)
+            snprintf(said, sizeof said, "%d programs, %d files; last refresh %lu.%lu s at %02d:%02d; Return walks again",
+                     programs, files, ms / 1000, ms % 1000 / 100, tm ? tm->tm_hour : 0, tm ? tm->tm_min : 0);
+        else
+            snprintf(said, sizeof said, "%d programs, %d files from the last run; Return walks the folders",
+                     programs, files);
     }
     return said;
 }
@@ -1313,7 +1343,11 @@ static void answer(void)
             for (i = 0; i < app.clips.n && total < QUERY_ROWS; i++) {
                 const struct ln_clip *cl = &app.clips.v[i];
                 ln_cliphist_title(cl, titles[i], sizeof titles[i]);
-                snprintf(subs[i], sizeof subs[i], cl->n == 1 ? "%lu character" : "%lu characters", (unsigned long)cl->n);
+                if (cl->kind == LN_CLIP_PICTURE)
+                    snprintf(subs[i], sizeof subs[i], "%d-bit picture, %lu.%lu MB", cl->depth,
+                             (unsigned long)(cl->n / (1024 * 1024)), (unsigned long)(cl->n % (1024 * 1024) * 10 / (1024 * 1024)));
+                else
+                    snprintf(subs[i], sizeof subs[i], cl->n == 1 ? "%lu character" : "%lu characters", (unsigned long)cl->n);
                 if (!ln_match(rest, rn, titles[i], strlen(titles[i]), &row[total].m)) {
                     /* not in the first line: anywhere in the text, and the line it is in */
                     char line[100];
@@ -1613,6 +1647,24 @@ static void answer(void)
 static const unsigned char *row_icon(void *ctx, const struct ln_row *row, int size)
 {
     (void)ctx;
+    if (row->source == LN_SRC_CLIP) {
+        /* a picture's small copy is made once, when it is first shown */
+        struct ln_clip *cl = (struct ln_clip *)ln_cliphist_find(&app.clips, row->key);
+        struct ln_ilbm im;
+        if (!cl || cl->kind != LN_CLIP_PICTURE || size <= 0) return NULL;
+        if (cl->thumb && cl->thumb_size == size) return cl->thumb;
+        if (cl->thumb_size == -size) return NULL;           /* tried, cannot be drawn */
+        free(cl->thumb);
+        cl->thumb = malloc((size_t)size * (size_t)size * 4);
+        cl->thumb_size = size;
+        if (!cl->thumb || !ln_ilbm_parse((const unsigned char *)cl->text, cl->n, &im)
+            || (!ln_ilbm_thumb(&im, size, cl->thumb) && !cl->thumb[(size / 2 * size + size / 2) * 4])) {
+            free(cl->thumb);
+            cl->thumb = NULL;
+            cl->thumb_size = -size;
+        }
+        return cl->thumb;
+    }
     if (row->source == LN_SRC_FILES) return ln_icons_get(app.icons, row->key, size);
     return row->source == LN_SRC_PROGRAMS && row->key < WIN_KEY ? ln_icons_get(app.icons, row->key, size) : NULL;
 }
@@ -2078,8 +2130,8 @@ static void run_selected(void)
     if (row->source == LN_SRC_CLIP) {
         const struct ln_clip *cl = ln_cliphist_find(&app.clips, row->key);
         if (!cl) return;
-        ok = ln_clip_write(cl->text, cl->n);
-        note("clipboard entry of %lu characters copied=%d", (unsigned long)cl->n, ok);
+        ok = cl->kind == LN_CLIP_PICTURE ? ln_clip_write_form((const unsigned char *)cl->text, cl->n) : ln_clip_write(cl->text, cl->n);
+        note("clipboard entry of %lu %s copied=%d", (unsigned long)cl->n, cl->kind == LN_CLIP_PICTURE ? "picture bytes" : "characters", ok);
         close_panel("copied");
         return;
     }
@@ -2362,10 +2414,12 @@ static void scan_events(void)
                 snprintf(app.files_note, sizeof app.files_note, "The last walk ran out of memory; the earlier index is in use");
                 note("files: walk incomplete, index kept");
             } else if (app.files_next) {
+                struct DateStamp t0, t1;
                 size_t n;
                 char *text;
                 APTR was = quiet();
                 BPTR dir;
+                DateStamp(&t0);
                 if (app.files) ln_fileindex_free(app.files);
                 app.files = app.files_next;
                 app.files_next = NULL;
@@ -2379,7 +2433,11 @@ static void scan_events(void)
                 loud(was);
                 if (ln_fileindex_full(app.files)) snprintf(app.files_note, sizeof app.files_note, "The index is full at %d entries; some files are left out", LN_FILES_MAX);
                 app.index_changed = 1;
-                note("files indexed: %d", ln_fileindex_count(app.files));
+                DateStamp(&t1);
+                app.files_walk_ms = m->title ? strtoul(m->title, NULL, 10) : 0;
+                app.files_save_ms = (unsigned long)((t1.ds_Minute - t0.ds_Minute) * 3000 + (t1.ds_Tick - t0.ds_Tick)) * 20;
+                note("files indexed: %d walk=%lu ms take-over-and-save=%lu ms (%lu bytes)", ln_fileindex_count(app.files),
+                     app.files_walk_ms, app.files_save_ms, (unsigned long)n);
                 app.files_walked = (double)time(NULL);
             }
             break;
@@ -2612,13 +2670,11 @@ int main(int argc, char **argv)
     {
         /* the clipboard's history starts with what is on it now */
         BYTE bit = AllocSignal(-1);
-        size_t n;
-        char *text;
         if (bit >= 0) {
             if (ln_clipwatch_start(FindTask(NULL), 1UL << bit)) app.clipsig = 1UL << bit;
             else FreeSignal(bit);
         }
-        if ((text = ln_clip_read(&n))) { ln_cliphist_add(&app.clips, text, n, now()); free(text); }
+        clip_take();
         note("clipboard watched=%d", app.clipsig != 0);
     }
 
@@ -2669,12 +2725,7 @@ int main(int argc, char **argv)
         if (got & SIGBREAKF_CTRL_C) running = 0;
         if (app.clipsig && (got & app.clipsig)) {
             /* the clipboard changed: its text joins the history */
-            size_t n;
-            char *text = app.clip_paused ? NULL : ln_clip_read(&n);
-            if (text) {
-                if (ln_cliphist_add(&app.clips, text, n, now()) && app.p.win) { answer(); show(&app.p); }
-                free(text);
-            }
+            if (!app.clip_paused && clip_take() && app.p.win) { answer(); show(&app.p); }
         }
         panel_events();
         scan_events();

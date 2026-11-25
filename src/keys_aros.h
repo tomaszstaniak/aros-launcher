@@ -21,4 +21,11 @@ int ln_clip_write(const char *utf8, size_t n);
  * none. */
 char *ln_clip_read(size_t *n);
 
+/* The clipboard's content when it is an IFF FORM of the given type (four
+ * letters, "ILBM" for a picture): all of its bytes, malloc'd, *n of them.
+ * NULL when the clipboard holds something else or more than max bytes. */
+unsigned char *ln_clip_read_form(const char *type, size_t max, size_t *n);
+/* Puts bytes read that way back on the clipboard as they are. 1 written. */
+int ln_clip_write_form(const unsigned char *data, size_t n);
+
 #endif

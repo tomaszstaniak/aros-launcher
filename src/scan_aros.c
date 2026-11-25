@@ -217,7 +217,9 @@ static void index_files(struct ln_scan *s)
 {
     char *blob = AllocVec(BLOB + 4, MEMF_PUBLIC);
     int i, whole = 1;
+    struct DateStamp t0, t1;
     if (!blob) return;
+    DateStamp(&t0);
     if (!send(s, LN_SCAN_FILES_BEGIN, NULL, NULL)) { FreeVec(blob); return; }
     for (i = 0; i < s->files_n && whole; i++) {
         BPTR lock;
@@ -232,7 +234,17 @@ static void index_files(struct ln_scan *s)
         }
     }
     /* a walk cut short or incomplete must not replace a whole index */
-    if (whole && !stopping()) send(s, LN_SCAN_FILES_END, NULL, NULL);
+    if (whole && !stopping()) {
+        /* how long the walk took, in milliseconds, as the message's text */
+        char ms[16];
+        ULONG v, k = 0, d = 1;
+        DateStamp(&t1);
+        v = (ULONG)((t1.ds_Days - t0.ds_Days) * 1440 * 3000 + (t1.ds_Minute - t0.ds_Minute) * 3000 + (t1.ds_Tick - t0.ds_Tick)) * 20;
+        while (v / d >= 10) d *= 10;
+        for (; d; d /= 10) ms[k++] = (char)('0' + v / d % 10);
+        ms[k] = 0;
+        send(s, LN_SCAN_FILES_END, NULL, ms);
+    }
     FreeVec(blob);
 }
 

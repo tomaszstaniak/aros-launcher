@@ -66,5 +66,29 @@ int main(void)
         assert(!ln_cliphist_search(&h2.v[0], "", 0, line, sizeof line));
         ln_cliphist_clear(&h2);
     }
+    {
+        /* pictures: kept byte for byte, named by their size, the oldest leave for the budget */
+        struct ln_cliphist h3;
+        char title[40], line[20];
+        size_t big = 30u * 1024u * 1024u;
+        char *a = malloc(big), *b = malloc(big), *c = malloc(big);
+        memset(&h3, 0, sizeof h3);
+        assert(a && b && c);
+        memset(a, 1, big); memset(b, 2, big); memset(c, 3, big);
+        assert(ln_cliphist_add(&h3, "note", 4, 1));
+        assert(ln_cliphist_add_picture(&h3, a, big, 1920, 1080, 24, 2) && h3.n == 2);
+        ln_cliphist_title(&h3.v[0], title, sizeof title);
+        assert(!strcmp(title, "Picture 1920 x 1080"));
+        assert(h3.v[0].kind == LN_CLIP_PICTURE && h3.v[0].n == big && !memcmp(h3.v[0].text, a, big));
+        assert(!ln_cliphist_search(&h3.v[0], "\1\1", 2, line, sizeof line));
+        assert(!ln_cliphist_add_picture(&h3, a, big, 1920, 1080, 24, 3));           /* the newest again */
+        assert(ln_cliphist_add_picture(&h3, b, big, 10, 10, 24, 4) && h3.n == 3);
+        assert(ln_cliphist_add_picture(&h3, c, big, 10, 10, 24, 5));                /* 90 MB would not fit */
+        assert(h3.n == 2 && h3.bytes == 2 * big && h3.v[0].text[0] == 3 && h3.v[1].text[0] == 2);
+        assert(!ln_cliphist_add_picture(&h3, a, LN_CLIP_PICTURE_MAX + 1u, 1, 1, 24, 6));
+        ln_cliphist_clear(&h3);
+        assert(h3.bytes == 0);
+        free(a); free(b); free(c);
+    }
     return 0;
 }
